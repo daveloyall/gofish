@@ -45,7 +45,7 @@ unsigned max_requests = 0;
 unsigned max_length = 0;
 unsigned n_requests = 0;
 int      n_connections = 0; // yes signed, I want to know if it goes -ve
-
+time_t   started;
 
 // Add an extra connection for error replies
 static struct connection conns[MAX_REQUESTS];
@@ -199,6 +199,7 @@ void gofish(char *name)
 
 	openlog(name, LOG_CONS, LOG_DAEMON);
 	syslog(LOG_INFO, "GoFish " GOFISH_VERSION " (%s) starting.", name);
+	time(&started);
 
 	// Create *before* chroot
 	create_pidfile(pidfile);
@@ -904,17 +905,41 @@ void create_pidfile(char *fname)
 }
 
 
+#define SECONDS_IN_A_MINUTE	(60)
+#define SECONDS_IN_AN_HOUR	(SECONDS_IN_A_MINUTE * 60)
+#define SECONDS_IN_A_DAY	(SECONDS_IN_AN_HOUR * 24)
+
+static char *uptime(char *str)
+{
+	time_t up = time(NULL) - started;
+
+	if(up >= SECONDS_IN_A_DAY) {
+		up /= SECONDS_IN_A_DAY;
+		sprintf(str, "%ld %s", up, up == 1 ? "day" : "days");
+	}
+	else if(up >= SECONDS_IN_AN_HOUR) {
+		up /= SECONDS_IN_AN_HOUR;
+		sprintf(str, "%ld %s", up, up == 1 ? "hour" : "hours");
+	}
+	else
+		strcpy(str, "< 1 hour");
+
+	return str;
+}
+
+
 static int gofish_stats(struct connection *conn)
 {
 	extern unsigned bad_munmaps;
-	char buf[200];
+	char buf[200], up[12];
 
 	sprintf(buf,
-			"GoFish " GOFISH_VERSION "\r\n"
+			"GoFish " GOFISH_VERSION " %12s\r\n"
 			"Requests:     %10u\r\n"
 			"Max parallel: %10u\r\n"
 			"Max length:   %10u\r\n"
 			"Connections:  %10d\r\n",
+			uptime(up),
 			n_requests, max_requests, max_length,
 			// we are an outstanding connection
 			n_connections - 1);

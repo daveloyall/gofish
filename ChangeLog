@@ -1,3 +1,13 @@
+Changes for 0.28
+
+    GoFish
+
+	* Folkert van Heusden: added madvise
+	* Ying-Chieh Liao: typo in configure.in
+	* removed some debugs
+	* replaced some gotos with while loops
+	* added uptime to stats
+
 Changes for 0.27
 
     GoFish

@@ -66,7 +66,6 @@ int munmap(void *start, size_t length)
 	free(start);
 	return 0;
 }
-
 #endif
 
 unsigned bad_munmaps = 0;
@@ -189,7 +188,14 @@ unsigned char *mmap_get(struct connection *conn, int fd)
 	// We mess around with conn->len
 	conn->mapped = conn->len;
 	mapped = mmap(NULL, conn->mapped, PROT_READ, MAP_SHARED, fd, 0);
-	return mapped == MAP_FAILED ? NULL : mapped;
+	if(mapped == MAP_FAILED) return NULL;
+
+#ifdef MADV_SEQUENTIAL
+	/* folkert@vanheusden.com */
+	(void)madvise(mapped, conn->mapped, MADV_SEQUENTIAL);
+#endif
+
+	return mapped;
 }
 
 

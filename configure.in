@@ -8,7 +8,7 @@ AC_CANONICAL_HOST
 dnl Extra configure arguments
 gopherroot=$localstatedir/gopher
 AC_ARG_WITH(gopherroot,
-	[  --with-gopheroot=ROOT   Use ROOT for Gopher documents],
+	[  --with-gopherroot=ROOT   Use ROOT for Gopher documents],
 	[gopherroot=$withval])
 AC_SUBST(gopherroot)
 

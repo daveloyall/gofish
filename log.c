@@ -126,10 +126,8 @@ void log_hit(struct connection *conn, unsigned status)
 					syslog(LOG_DEBUG, "Bad referer '%s'", referer);
 					referer = "-";
 				}
-			} else {
-				syslog(LOG_DEBUG, "No referer");
+			} else
 				referer = "-";
-			}
 
 			if((agent = conn->user_agent)) {
 				for(agent += 12; isspace((int)*agent); ++agent) ;
@@ -140,40 +138,31 @@ void log_hit(struct connection *conn, unsigned status)
 					syslog(LOG_DEBUG, "Bad agent '%s'", agent);
 					agent = "-";
 				}
-			} else {
-				syslog(LOG_DEBUG, "No agent");
+			} else
 				agent = "-";
-			}
 
 			// This is 500 + hostname chars max
-		combined_again:
-			if(virtual_hosts && conn->host)
-				n = fprintf(log_fp,
-							"%s %s/%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
-							common, conn->host, request, status, conn->len,
-							referer, agent);
-			else
-				n = fprintf(log_fp,
-							"%s /%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
-							common, request, status, conn->len, referer, agent);
-			if(n < 0 && errno == EINTR) {
-				printf("EINTR\n"); // SAM
-				goto combined_again;
-			}
+			do
+				if(virtual_hosts && conn->host)
+					n = fprintf(log_fp,
+								"%s %s/%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
+								common, conn->host, request, status, conn->len,
+								referer, agent);
+				else
+					n = fprintf(log_fp,
+								"%s /%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
+								common, request, status, conn->len, referer, agent);
+			while(n < 0 && errno == EINTR);
 		} else {
 			// This is 600 + hostname chars max
-			// SAM 600???
-		http_again:
-			if(virtual_hosts && conn->host)
-				n = fprintf(log_fp, "%s %s/%.200s\" %u %u\n",
-							common, conn->host, request, status, conn->len);
-			else
-				n = fprintf(log_fp, "%s /%.200s\" %u %u\n",
-							common, request, status, conn->len);
-			if(n < 0 && errno == EINTR) {
-				printf("EINTR\n"); // SAM
-				goto http_again;
-			}
+			do
+				if(virtual_hosts && conn->host)
+					n = fprintf(log_fp, "%s %s/%.200s\" %u %u\n",
+								common, conn->host, request, status, conn->len);
+				else
+					n = fprintf(log_fp, "%s /%.200s\" %u %u\n",
+								common, request, status, conn->len);
+			while(n < 0 && errno == EINTR);
 		}
 	} else {
 		char *name = conn->cmd ? conn->cmd : "[Empty]";
@@ -182,12 +171,10 @@ void log_hit(struct connection *conn, unsigned status)
 		if(*name && *(name + 1) == '/') name += 2;
 
 		// This is 400 chars max
-	gopher_again:
-		n = fprintf(log_fp, "%s /%.300s\" %u %u\n", common, name, status, conn->len);
-		if(n < 0 && errno == EINTR) {
-			printf("EINTR\n"); // SAM
-			goto gopher_again;
-		}
+		do
+			n = fprintf(log_fp, "%s /%.300s\" %u %u\n",
+						common, name, status, conn->len);
+		while(n < 0 && errno == EINTR);
 	}
 
 	// every path
