@@ -47,6 +47,8 @@ static void log_reopen(int sig)
 
 	fclose(log_fp);
 	log_fp = fopen(log_name, "a");
+
+	syslog(LOG_WARNING, "Log file reopened.");
 }
 
 
@@ -72,6 +74,9 @@ void log_hit(struct connection *conn, unsigned status)
 	if(ignore_local &&
 	   ((conn->addr & 0xffff0000) == 0xc0a80000 ||
 		conn->addr == 0x7f000001)) return;
+
+	if(log_must_reopen)
+		log_reopen(SIGUSR1);
 
 	time(&now);
 	t = localtime(&now);
@@ -186,7 +191,7 @@ static void send_errno(int sock, char *name, int errnum)
 	else
 		sprintf(error, "3'%.500s' %.500s (%d)\r\n",
 				name, strerror(errnum), errnum);
-	write(sock, error, strlen(error));
+	while(write(sock, error, strlen(error)) < 0 && errno == EINTR) ;
 }
 
 
@@ -217,5 +222,5 @@ void send_error(struct connection *conn, unsigned error)
 	for(i = 0; i < N_ERRORS - 1 && error != errors[i].errnum; ++i) ;
 
 	sprintf(errstr, "3%s [%d]\r\n", errors[i].errstr, error);
-	write(SOCKET(conn), errstr, strlen(errstr));
+	while(write(SOCKET(conn), errstr, strlen(errstr)) < 0 && errno == EINTR) ;
 }

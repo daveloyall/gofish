@@ -166,6 +166,8 @@ void mime_cleanup(void);
 void mmap_init(void);
 unsigned char *mmap_get(struct connection *conn, int fd);
 void mmap_release(struct connection *conn);
+int READ(int handle, char *whereto, int len);
+int WRITE(int handle, char *whereto, int len);
 
 
 #if MAX_REQUESTS < 2
@@ -199,6 +201,10 @@ void mmap_release(struct connection *conn);
 
 void set_writeable(struct connection *conn);
 
+#endif
+
+#ifndef HAVE_DAEMON
+int daemon(int nochdir, int noclose);
 #endif
 
 #endif /* _GOFISH_H_ */

@@ -42,7 +42,7 @@ AC_CHECK_FUNCS(mmap)
 AC_TYPE_SIGNAL
 AC_FUNC_STRFTIME
 AC_CHECK_FUNCS(gethostname select socket strdup strerror strstr strtol uname)
-AC_CHECK_FUNCS(writev)
+AC_CHECK_FUNCS(writev daemon)
 
 dnl poll does not work on the arm
 dnl if this goes, AC_CANONICAL_HOST and the files

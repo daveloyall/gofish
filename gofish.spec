@@ -1,6 +1,6 @@
 Summary: A Gopher Server
 Name: gofish
-Version: 0.23
+Version: 0.24
 Release: 1
 Copyright: GPL
 Group: Networking/Daemons

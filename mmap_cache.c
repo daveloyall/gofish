@@ -53,7 +53,7 @@ void *mmap(void *start,  size_t length, int prot , int flags, int fd, off_t offs
 	if((buf = malloc(length)) == NULL) return MAP_FAILED;
 
 	lseek(fd, 0, SEEK_SET);
-	if(read(fd, buf, length) != length) {
+	if(READ(fd, buf, length) != length) {
 		free(buf);
 		return MAP_FAILED;
 	}

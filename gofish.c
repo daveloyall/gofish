@@ -133,8 +133,7 @@ static void cleanup()
 int main(int argc, char *argv[])
 {
 	char *config = GOPHER_CONFIG;
-	pid_t pid;
-	int c, daemon = 0;
+	int c, go_daemon = 0;
 	char *prog;
 
 	if((prog = strrchr(argv[0], '/')))
@@ -145,7 +144,7 @@ int main(int argc, char *argv[])
 	while((c = getopt(argc, argv, "c:dv")) != -1)
 		switch(c) {
 		case 'c': config = optarg; break;
-		case 'd': daemon = 1; break;
+		case 'd': go_daemon = 1; break;
 		case 'v': ++verbose; break;
 		default:
 			printf("usage: %s [-dv] [-c config]\n", *argv);
@@ -158,16 +157,16 @@ int main(int argc, char *argv[])
 
 	http_init();
 
-	if(daemon) {
-		if((pid = fork()) == 0) {
+	if(go_daemon) {
+		if(daemon(0, 0) == -1)
+			syslog(LOG_CRIT, "Could not become daemon-process!");
+		else
 			gofish(prog); // never returns
-			exit(1);	// paranoia
-		}
-		return pid ==-1 ? 1 : 0; // parent exits
 	}
 	else
 		gofish(prog); // never returns
-	return 1; // compiler shutup
+
+	return 1;
 }
 
 static void
@@ -631,28 +630,28 @@ int new_connection(int csock)
 }
 
 
-/* SAM We are going to have to split the http/gopher streams earlier.
- * I think as soon as we see the GET/HEAD we should split and do more
- * intelligent reading on the http side of things.
- */
 int read_request(struct connection *conn)
 {
 	int fd;
 	int n;
 	char *p, selector;
 
-	n = read(SOCKET(conn), conn->cmd + conn->offset, MAX_LINE - conn->offset);
+	do
+		n = read(SOCKET(conn), conn->cmd + conn->offset, MAX_LINE - conn->offset);
+	while(n < 0 && errno == EINTR);
 
-	if(n <= 0) {
-		// SAM	This is evil for gopher anyway....
-// SAM		if(errno == EAGAIN) {
-// SAM			printf("EAGAIN\n");
-// SAM			return 0;
-// SAM		}
-		if(n == 0)
-			syslog(LOG_WARNING, "Read: unexpected EOF");
-		else
-			syslog(LOG_WARNING, "Read error (%d): %m", errno);
+	if(n < 0) {
+		if(errno == EAGAIN) {
+			syslog(LOG_DEBUG, "EAGAIN\n");
+			return 0;
+		}
+
+		syslog(LOG_WARNING, "Read error (%d): %m", errno);
+		close_connection(conn, 408);
+		return 1;
+	}
+	if(n == 0) {
+		syslog(LOG_WARNING, "Read: unexpected EOF");
 		close_connection(conn, 408);
 		return 1;
 	}
@@ -759,10 +758,19 @@ int write_request(struct connection *conn)
 	int n, i;
 	struct iovec *iov;
 
-	n = writev(SOCKET(conn), conn->iovs, conn->n_iovs);
+	do
+		n = writev(SOCKET(conn), conn->iovs, conn->n_iovs);
+	while(n < 0 && errno == EINTR);
 
-	if(n <= 0) {
+	if(n < 0) {
+		if(errno == EAGAIN) return 0;
+
 		syslog(LOG_ERR, "writev: %m");
+		close_connection(conn, 408);
+		return 1;
+	}
+	if(n == 0) {
+		syslog(LOG_ERR, "writev unexpected EOF");
 		close_connection(conn, 408);
 		return 1;
 	}
@@ -860,9 +868,24 @@ static int gofish_stats(struct connection *conn)
 	}
 
 	// SAM safe? It's < 150 bytes...
-	write(SOCKET(conn), buf, strlen(buf));
+	while(write(SOCKET(conn), buf, strlen(buf)) < 0 && errno == EINTR) ;
 
 	close_connection(conn, 1000);
 
 	return 0;
 }
+
+
+#ifndef HAVE_DAEMON
+// Minimal daemon call for solaris
+int daemon(int nochdir, int noclose)
+{
+	pid_t pid;
+
+	if((pid = fork()) == 0) return 0;
+
+	if(pid == -1) return -1;
+
+	exit(0); // parent exits
+}
+#endif
