@@ -264,7 +264,5 @@ int read_dir(char *path, int level)
 	return nfiles;
 }
 
-#ifdef USE_MIME
 // We do not use mime
 void set_mime_file(char *fname) {}
-#endif

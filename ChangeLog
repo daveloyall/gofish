@@ -1,3 +1,11 @@
+Changes for 0.17
+
+    GoFish
+
+	* added mime file support
+	* improved http support
+	* added support for HEAD command
+
 Changes for 0.16:
 
     GoFish

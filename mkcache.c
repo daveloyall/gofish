@@ -384,7 +384,5 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-#ifdef USE_MIME
 // We do not use mime
 void set_mime_file(char *fname) {}
-#endif

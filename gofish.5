@@ -20,29 +20,30 @@ are considered comments. All options are case sensitive.
 The example in the example section shows the options with
 their default values (which may be changed at compile time).
 .SH OPTIONS
-.B root
-- the root of the server directory.
-.br
-.B logfile
-- the file to log GoFish hits in
-.br
-.B pidfile
-- where to put the pidfile at runtime
-.br
-.B host
-- host name (for the mkcache program)
-.br
-.B port
-- what port number to listen on. 70 is the gopher port
-.br
-.B uid
-- the numeric user id of the gopher user
-.br
-.B gid
-- the numeric group id of the gopher user
-.br
-.B no_local
-- if set to 1, GoFish will not log accesses from local
+.TP
+\fBroot\fR
+the root of the server directory.
+.TP
+\fBlogfile\fR
+the file to log GoFish hits in
+.TP
+\fBpidfile\fR
+where to put the pidfile at runtime
+.TP
+\fBhost\fR
+host name
+.TP
+\fBport\fR
+what port number to listen on. 70 is the gopher port
+.TP
+\fBuid, gid\fR
+the numeric user and group ids of the gopher user
+.TP
+\fBmime_file\fR
+the location of the Apache style mime.types file
+.TP
+\fBno_local\fR
+if set to 1, GoFish will not log accesses from local
 machines. Local machines are defined as 192.168.x.x and 127.0.0.1.
 .SH EXAMPLE
 .nf

@@ -1,7 +1,7 @@
 /*
  * goproxy.c - a gopher proxy server for Opera
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.1 $ $Date: 2002/10/18 04:20:36 $
+ * $Revision: 1.2 $ $Date: 2002/10/18 22:15:38 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the

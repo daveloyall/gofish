@@ -1,7 +1,7 @@
 /*
  * config.c - read the config file for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.11 $ $Date: 2002/10/18 04:21:18 $
+ * $Revision: 1.12 $ $Date: 2002/10/18 22:15:38 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,11 +46,7 @@ int   icon_width = ICON_WIDTH;
 int   icon_height = ICON_HEIGHT;
 
 
-#ifdef USE_MIME
 extern void set_mime_file(char *fname);
-#else
-void set_mime_file(char *fname) {}
-#endif
 
 
 // If we are already out of memory, we are in real trouble

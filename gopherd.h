@@ -1,7 +1,7 @@
 /*
  * gopherd.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.12 $ $Date: 2002/10/18 04:21:18 $
+ * $Revision: 1.13 $ $Date: 2002/10/18 22:15:38 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -26,6 +26,7 @@
 #ifdef HAVE_POLL
 #include <poll.h>
 #endif
+#include <unistd.h>
 #include <sys/uio.h>
 
 #define MAX_HOSTNAME	65
@@ -121,11 +122,9 @@ void http_cleanup(void);
 int http_get(struct connection *conn);
 int http_send_response(struct connection *conn);
 
-#ifdef USE_MIME
 // exported from mime.c
 void init_mime(void);
 char *find_mime(char *fname);
-#endif
 
 #ifdef USE_CACHE
 // exported from mmap_cache.c
