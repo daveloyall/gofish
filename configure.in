@@ -6,7 +6,7 @@ AM_CONFIG_HEADER(config.h:config.h.in)
 AC_CANONICAL_HOST
 
 dnl Extra configure arguments
-gopherroot=$localstatedir/lib/gopherd
+gopherroot=$localstatedir/gopher
 AC_ARG_WITH(gopherroot,
 	[  --with-gopheroot=ROOT   Use ROOT for Gopher documents],
 	[gopherroot=$withval])
@@ -64,5 +64,14 @@ else
   enable_mmap_cache=no
 fi
 AC_MSG_RESULT([$enable_mmap_cache])
+
+dnl Check for gopher user override.
+AC_MSG_CHECKING([gopheruser])
+gopheruser="gopher"
+AC_ARG_WITH(gopheruser,
+	[  --with-gopheruser=USER   Use USER as non-privileged user],
+	[gopheruser=$withval])
+AC_DEFINE_UNQUOTED(GOPHER_USER, "$gopheruser", [The non-privileged user])
+AC_MSG_RESULT([$gopheruser])
 
 AC_OUTPUT(Makefile)

@@ -65,7 +65,6 @@
  */
 #define IGNORE_LOCAL	1
 
-#define GOPHER_USER		"gopher"
 #define GOPHER_UID		-1
 #define GOPHER_GID		-1
 

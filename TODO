@@ -1,36 +1,9 @@
-THE FUTURE?
------------
-
-Step one: GoFish as gopher server with http gateway
-
-	+ done
-
-Step two: GoFish as a static web server
-
-	+ done
-
-Step three: Separate CGI server 
-
-	- follows Unix philosophy of simple tools working together
-	- can be quickly shut down
-	- easier to secure
-
-Step four: Profits!
-
-Step five: Support XML connections and rename it GoFish.net
-
-
-THE REALITY
------------
+TODO
+----
 
 - more configuration
   - http error msgs
   - html header/footer
-
-- doc combined versus common
-- doc http
-- doc mmap_cache
-  - mmap_cache_size
 
 - persistent http connections
   - would have to timeout connections
@@ -38,4 +11,24 @@ THE REALITY
 - convert log hits to use write calls
 - flock to logging so mulitple progs can log to the same file
 
------ added argv[0] to set syslog name
+- clean the close_connect/log path
+  - multiple checks for \r\n
+  - multiple checks for GET/HEAD
+
+- gopher errors should work like http errors?
+
+- get rid of conn->http
+  - http-server config option?
+
+
+DOCUMENTATION
+-------------
+
+- doc combined versus common
+
+- doc http
+
+- doc mmap_cache
+  - mmap_cache_size
+
+- added argv[0] to set syslog name

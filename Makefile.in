@@ -89,11 +89,8 @@ DEFS = -DSYSCONFDIR=\"${sysconfdir}\" -DLOCALSTATEDIR=\"${localstatedir}\" \
 sbin_PROGRAMS = gofish
 gofish_SOURCES = gofish.c log.c socket.c config.c http.c mmap_cache.c mime.c
 
-# I do not want catfish to build by default since it doesn't work.
-# However, I could not work out how to do this, so I corrupted the meaning of
-# `make check'. Sorry.
-check_PROGRAMS = catfish
-catfish_SOURCES = catfish.c log.c socket.c config.c cgi.c mmap_cache.c mime.c
+check_PROGRAMS = webtest
+webtest_SOURCES = webtest.c socket.c
 
 EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \
 	init-gofish gofish.spec
@@ -103,28 +100,20 @@ man_MANS = gofish.1 gofish.5 dotcache.5 gopherd.1 mkcache.1 gmap2cache.1
 
 
 # Extra helper programs
-bin_PROGRAMS = mkcache gmap2cache webtest
+bin_PROGRAMS = mkcache gmap2cache
 mkcache_SOURCES = mkcache.c config.c mime.c
 gmap2cache_SOURCES = gmap2cache.c config.c
-webtest_SOURCES = webtest.c socket.c
 bin_SCRIPTS = check-files
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = config.h
 CONFIG_CLEAN_FILES =
-bin_PROGRAMS = mkcache$(EXEEXT) gmap2cache$(EXEEXT) webtest$(EXEEXT)
-check_PROGRAMS = catfish$(EXEEXT)
+bin_PROGRAMS = mkcache$(EXEEXT) gmap2cache$(EXEEXT)
+check_PROGRAMS = webtest$(EXEEXT)
 sbin_PROGRAMS = gofish$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS) $(sbin_PROGRAMS)
 
-am_catfish_OBJECTS = catfish.$(OBJEXT) log.$(OBJEXT) socket.$(OBJEXT) \
-	config.$(OBJEXT) cgi.$(OBJEXT) mmap_cache.$(OBJEXT) \
-	mime.$(OBJEXT)
-catfish_OBJECTS = $(am_catfish_OBJECTS)
-catfish_LDADD = $(LDADD)
-catfish_DEPENDENCIES =
-catfish_LDFLAGS =
 am_gmap2cache_OBJECTS = gmap2cache.$(OBJEXT) config.$(OBJEXT)
 gmap2cache_OBJECTS = $(am_gmap2cache_OBJECTS)
 gmap2cache_LDADD = $(LDADD)
@@ -160,8 +149,8 @@ COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 CCLD = $(CC)
 LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
 CFLAGS = @CFLAGS@
-DIST_SOURCES = $(catfish_SOURCES) $(gmap2cache_SOURCES) \
-	$(gofish_SOURCES) $(mkcache_SOURCES) $(webtest_SOURCES)
+DIST_SOURCES = $(gmap2cache_SOURCES) $(gofish_SOURCES) \
+	$(mkcache_SOURCES) $(webtest_SOURCES)
 
 NROFF = nroff
 MANS = $(man_MANS)
@@ -169,7 +158,7 @@ DIST_COMMON = README AUTHORS COPYING ChangeLog INSTALL Makefile.am \
 	Makefile.in NEWS TODO aclocal.m4 config.guess config.h.in \
 	config.sub configure configure.in depcomp install-sh missing \
 	mkinstalldirs
-SOURCES = $(catfish_SOURCES) $(gmap2cache_SOURCES) $(gofish_SOURCES) $(mkcache_SOURCES) $(webtest_SOURCES)
+SOURCES = $(gmap2cache_SOURCES) $(gofish_SOURCES) $(mkcache_SOURCES) $(webtest_SOURCES)
 
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -260,9 +249,6 @@ uninstall-sbinPROGRAMS:
 
 clean-sbinPROGRAMS:
 	-test -z "$(sbin_PROGRAMS)" || rm -f $(sbin_PROGRAMS)
-catfish$(EXEEXT): $(catfish_OBJECTS) $(catfish_DEPENDENCIES) 
-	@rm -f catfish$(EXEEXT)
-	$(LINK) $(catfish_LDFLAGS) $(catfish_OBJECTS) $(catfish_LDADD) $(LIBS)
 gmap2cache$(EXEEXT): $(gmap2cache_OBJECTS) $(gmap2cache_DEPENDENCIES) 
 	@rm -f gmap2cache$(EXEEXT)
 	$(LINK) $(gmap2cache_LDFLAGS) $(gmap2cache_OBJECTS) $(gmap2cache_LDADD) $(LIBS)
@@ -667,7 +653,7 @@ version.h: gofish.spec
 	echo "#define GOFISH_VERSION \"$$version\"" > version.h; \
 	echo "Updated version.h to $$version"
 
-*.o: gofish.h
+*.o: gofish.h config.h
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
 .NOEXPORT:

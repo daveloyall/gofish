@@ -507,8 +507,8 @@ void close_connection(struct connection *conn, int status)
 
 	--n_connections;
 
-	if(status != 200 && conn->cmd) {
-		// Make sure errors have a clean cmd
+	if(conn->cmd) {
+		// Make we have a clean cmd
 		char *p;
 
 		for(p = conn->cmd; *p && *p != '\r' && *p != '\n'; ++p) ;
@@ -577,6 +577,7 @@ void close_connection(struct connection *conn, int status)
 	conn->html_trailer = NULL;
 
 	conn->http = 0;
+	conn->host = NULL;
 
 	conn->status = 200;
 

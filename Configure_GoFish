@@ -7,7 +7,7 @@ which where provided as part of the GoFish package.
 
 For the really impatient:
 
-    1) Add some files and/or directories to /var/lib/gopherd
+    1) Add some files and/or directories to /var/gopher
     2) Run `mkcache -r'
     3) Sit back and wait for the hits
 
@@ -19,7 +19,7 @@ The Gopher spec is defined in RFC 1436 "Internet Gopher Protocol" (see
 Links below).  The important thing to remember is that gopher is ment
 to share files. It uses a directory structure to layout the files. The
 root directory is the base directory that all files descend from. In
-GoFish the root directory defaults to /var/lib/gopherd.
+GoFish the root directory defaults to /var/gopher.
 
 GoFish requires a special file called ".cache" in each directory you
 want to serve files from. There is a man page provided with GoFish on
@@ -33,10 +33,9 @@ files in your gopher directories. See "man mkcache" for more
 information on mkcache.
 
 Why is it called .cache? The original gopher servers produced their
-directory menus dynamically. Since directory menu hits are done more
-often then file hits (there tends to be at least one directory hit per
-file) the servers produced .cache files with the directory menu in
-it. I decided to keep the name, even though they are not created
+directory menus dynamically. Since directory menu hits where
+expensive, the servers cached preprocessed output in .cache files I
+decided to keep the name, even though they are not created
 dynamically.
 
 
@@ -86,7 +85,7 @@ converted to html. In the case of text files, they are just centered
 and sent within <pre></pre> tags.
 
 To access a file via http, just add the port number. For example:
-<http://seanm.ca:70/11/rfc>.
+<http://seanm.ca:70/1/rfc>.
 
 
 				Links

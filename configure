@@ -838,6 +838,7 @@ Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --with-gopheroot=ROOT   Use ROOT for Gopher documents
+  --with-gopheruser=USER   Use USER as non-privileged user
 
 Some influential environment variables:
   CC          C compiler command
@@ -1638,7 +1639,7 @@ host_os=`echo $ac_cv_host | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\3/'`
 
 
 
-gopherroot=$localstatedir/lib/gopherd
+gopherroot=$localstatedir/gopher
 
 # Check whether --with-gopherroot or --without-gopherroot was given.
 if test "${with_gopherroot+set}" = set; then
@@ -4610,6 +4611,23 @@ else
 fi
 echo "$as_me:$LINENO: result: $enable_mmap_cache" >&5
 echo "${ECHO_T}$enable_mmap_cache" >&6
+
+echo "$as_me:$LINENO: checking gopheruser" >&5
+echo $ECHO_N "checking gopheruser... $ECHO_C" >&6
+gopheruser="gopher"
+
+# Check whether --with-gopheruser or --without-gopheruser was given.
+if test "${with_gopheruser+set}" = set; then
+  withval="$with_gopheruser"
+  gopheruser=$withval
+fi;
+
+cat >>confdefs.h <<_ACEOF
+#define GOPHER_USER "$gopheruser"
+_ACEOF
+
+echo "$as_me:$LINENO: result: $gopheruser" >&5
+echo "${ECHO_T}$gopheruser" >&6
 
 ac_config_files="$ac_config_files Makefile"
 cat >confcache <<\_ACEOF

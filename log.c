@@ -103,16 +103,7 @@ void log_hit(struct connection *conn, unsigned status)
 	strcat(p, conn->http == HTTP_HEAD ? "HEAD" : "GET");
 
 	if(conn->http) {
-		char *request, *e;
-
-		if((p = strchr(conn->cmd, '\r')) ||
-		   (p = strchr(conn->cmd, '\n'))) {// paranoia
-			*p++ = '\0';
-			e = p;
-		} else {
-			p = "?";
-			e = "";
-		}
+		char *request;
 
 		// SAM Save this?
 		request = conn->cmd;
@@ -153,7 +144,7 @@ void log_hit(struct connection *conn, unsigned status)
 
 			// This is 500 + hostname chars max
 		combined_again:
-			if(virtual_hosts)
+			if(virtual_hosts && conn->host)
 				n = fprintf(log_fp,
 							"%s %s/%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
 							common, conn->host, request, status, conn->len,
@@ -170,7 +161,7 @@ void log_hit(struct connection *conn, unsigned status)
 			// This is 600 + hostname chars max
 			// SAM 600???
 		http_again:
-			if(virtual_hosts)
+			if(virtual_hosts && conn->host)
 				n = fprintf(log_fp, "%s %s/%.200s\" %u %u\n",
 							common, conn->host, request, status, conn->len);
 			else

@@ -1,3 +1,12 @@
+Changes for 0.25
+
+    GoFish
+
+	* changed default gopher root to /var/gopher
+	* added make check
+	* bugfix for virtual hosts and 403: host was undefined in log
+	* add configure option for gopheruser
+
 Changes for 0.24
 
     GoFish
