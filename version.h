@@ -1,0 +1,1 @@
+#define GOFISH_VERSION "0.8"
