@@ -2,7 +2,7 @@ Changes for 0.26
 
     GoFish
 
-	* added config option is-http
+	* added config option is-http. This *must* be set for web servers!
 	* allow looser links
 	* extern gateway links do not assume http available
 	* changed http gateway dir headings
