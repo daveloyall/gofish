@@ -198,7 +198,6 @@ void gofish(char *name)
 
 	openlog(name, LOG_CONS, LOG_DAEMON);
 	syslog(LOG_INFO, "GoFish " GOFISH_VERSION " (%s) starting.", name);
-	log_open(logfile);
 
 	// Create *before* chroot
 	create_pidfile(pidfile);
@@ -209,7 +208,10 @@ void gofish(char *name)
 	}
 
 	setup_privs();
-	
+
+	// Do this *before* chroot
+	log_open(logfile);
+
 	if(chroot(root_dir)) {
 #ifdef ALLOW_NON_ROOT
 		if(errno == EPERM)
@@ -275,7 +277,8 @@ void start_polling(int csock)
 	while(1) {
 		timeout = n_connections ? (POLL_TIMEOUT * 1000) : -1;
 		if((n = poll(ufds, npoll, timeout)) < 0) {
-			syslog(LOG_WARNING, "poll: %m");
+			if(errno != EINTR)
+				syslog(LOG_WARNING, "poll: %m");
 			continue;
 		}
 
@@ -364,7 +367,8 @@ void start_selecting(int csock)
 
 		timeout = n_connections ? &timeoutval : NULL;
 		if((n = select(nfds, &cur_reads, &cur_writes, NULL, timeout)) < 0) {
-			syslog(LOG_WARNING, "select: %m");
+			if(errno != EINTR)
+				syslog(LOG_WARNING, "select: %m");
 			continue;
 		}
 
@@ -503,7 +507,7 @@ void close_connection(struct connection *conn, int status)
 
 	--n_connections;
 
-	if(status != 200) {
+	if(status != 200 && conn->cmd) {
 		// Make sure errors have a clean cmd
 		char *p;
 

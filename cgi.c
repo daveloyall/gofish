@@ -50,7 +50,9 @@ static char *mime_html = "text/html; charset=iso-8859-1";
 #define HTML_INDEX_TYPE	mime_html
 
 
+#if 0
 static int isdir(char *name);
+#endif
 
 
 inline int write_out(int fd, char *buf, int len)
@@ -487,6 +489,7 @@ int cgi_get(struct connection *conn)
 }
 
 
+#if 0
 static int isdir(char *name)
 {
 	struct stat sbuf;
@@ -494,6 +497,7 @@ static int isdir(char *name)
 	if(stat(name, &sbuf) == -1) return 0;
 	return S_ISDIR(sbuf.st_mode);
 }
+#endif
 
 
 int http_init()

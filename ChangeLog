@@ -6,7 +6,7 @@ Changes for 0.24
 	Heusden
 	* added blocking read/write patchs from Folkert van Heusden
 	* added daemon patch from Folkert van Heusden
-	* bugfix race condition when reopening log
+	* bugfix fixed log reopen. The log must be in the chroot jail
 
 Changes for 0.23
 

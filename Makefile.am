@@ -5,8 +5,13 @@ AUTOMAKE_OPTIONS = no-dependencies
 DEFS = -DSYSCONFDIR=\"${sysconfdir}\" -DLOCALSTATEDIR=\"${localstatedir}\" \
        -DGOPHER_ROOT=\"@gopherroot@\"
 
-sbin_PROGRAMS = gofish catfish
+sbin_PROGRAMS = gofish
 gofish_SOURCES = gofish.c log.c socket.c config.c http.c mmap_cache.c mime.c
+
+# I do not want catfish to build by default since it doesn't work.
+# However, I could not work out how to do this, so I corrupted the meaning of
+# `make check'. Sorry.
+check_PROGRAMS = catfish
 catfish_SOURCES = catfish.c log.c socket.c config.c cgi.c mmap_cache.c mime.c
 
 EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \

@@ -86,8 +86,13 @@ DEFS = -DSYSCONFDIR=\"${sysconfdir}\" -DLOCALSTATEDIR=\"${localstatedir}\" \
        -DGOPHER_ROOT=\"@gopherroot@\"
 
 
-sbin_PROGRAMS = gofish catfish
+sbin_PROGRAMS = gofish
 gofish_SOURCES = gofish.c log.c socket.c config.c http.c mmap_cache.c mime.c
+
+# I do not want catfish to build by default since it doesn't work.
+# However, I could not work out how to do this, so I corrupted the meaning of
+# `make check'. Sorry.
+check_PROGRAMS = catfish
 catfish_SOURCES = catfish.c log.c socket.c config.c cgi.c mmap_cache.c mime.c
 
 EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \
@@ -109,7 +114,8 @@ mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = config.h
 CONFIG_CLEAN_FILES =
 bin_PROGRAMS = mkcache$(EXEEXT) gmap2cache$(EXEEXT) webtest$(EXEEXT)
-sbin_PROGRAMS = gofish$(EXEEXT) catfish$(EXEEXT)
+check_PROGRAMS = catfish$(EXEEXT)
+sbin_PROGRAMS = gofish$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS) $(sbin_PROGRAMS)
 
 am_catfish_OBJECTS = catfish.$(OBJEXT) log.$(OBJEXT) socket.$(OBJEXT) \
@@ -227,6 +233,9 @@ uninstall-binPROGRAMS:
 
 clean-binPROGRAMS:
 	-test -z "$(bin_PROGRAMS)" || rm -f $(bin_PROGRAMS)
+
+clean-checkPROGRAMS:
+	-test -z "$(check_PROGRAMS)" || rm -f $(check_PROGRAMS)
 sbinPROGRAMS_INSTALL = $(INSTALL_PROGRAM)
 install-sbinPROGRAMS: $(sbin_PROGRAMS)
 	@$(NORMAL_INSTALL)
@@ -510,6 +519,7 @@ distcleancheck: distclean
 	       $(distcleancheck_listfiles) ; \
 	       exit 1; } >&2
 check-am: all-am
+	$(MAKE) $(AM_MAKEFLAGS) $(check_PROGRAMS)
 check: check-am
 all-am: Makefile $(PROGRAMS) $(SCRIPTS) $(MANS) config.h
 
@@ -542,8 +552,8 @@ maintainer-clean-generic:
 	@echo "it deletes files that may require special tools to rebuild."
 clean: clean-am
 
-clean-am: clean-binPROGRAMS clean-generic clean-sbinPROGRAMS \
-	mostlyclean-am
+clean-am: clean-binPROGRAMS clean-checkPROGRAMS clean-generic \
+	clean-sbinPROGRAMS mostlyclean-am
 
 distclean: distclean-am
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
@@ -587,19 +597,19 @@ uninstall-am: uninstall-binPROGRAMS uninstall-binSCRIPTS \
 uninstall-man: uninstall-man1 uninstall-man5
 
 .PHONY: GTAGS all all-am check check-am clean clean-binPROGRAMS \
-	clean-generic clean-sbinPROGRAMS dist dist-all dist-gzip \
-	distcheck distclean distclean-compile distclean-generic \
-	distclean-hdr distclean-tags distcleancheck distdir dvi dvi-am \
-	info info-am install install-am install-binPROGRAMS \
-	install-binSCRIPTS install-data install-data-am \
-	install-data-local install-exec install-exec-am install-info \
-	install-info-am install-man install-man1 install-man5 \
-	install-sbinPROGRAMS install-strip installcheck installcheck-am \
-	installdirs maintainer-clean maintainer-clean-generic \
-	mostlyclean mostlyclean-compile mostlyclean-generic tags \
-	uninstall uninstall-am uninstall-binPROGRAMS \
-	uninstall-binSCRIPTS uninstall-info-am uninstall-local \
-	uninstall-man uninstall-man1 uninstall-man5 \
+	clean-checkPROGRAMS clean-generic clean-sbinPROGRAMS dist \
+	dist-all dist-gzip distcheck distclean distclean-compile \
+	distclean-generic distclean-hdr distclean-tags distcleancheck \
+	distdir dvi dvi-am info info-am install install-am \
+	install-binPROGRAMS install-binSCRIPTS install-data \
+	install-data-am install-data-local install-exec install-exec-am \
+	install-info install-info-am install-man install-man1 \
+	install-man5 install-sbinPROGRAMS install-strip installcheck \
+	installcheck-am installdirs maintainer-clean \
+	maintainer-clean-generic mostlyclean mostlyclean-compile \
+	mostlyclean-generic tags uninstall uninstall-am \
+	uninstall-binPROGRAMS uninstall-binSCRIPTS uninstall-info-am \
+	uninstall-local uninstall-man uninstall-man1 uninstall-man5 \
 	uninstall-sbinPROGRAMS
 
 

@@ -49,6 +49,9 @@ int      n_connections = 0; // yes signed, I want to know if it goes -ve
 // Add an extra connection for error replies
 static struct connection conns[MAX_REQUESTS];
 
+// From cgi.c
+int cgi_get(struct connection *conn);
+
 #ifdef HAVE_POLL
 static struct pollfd ufds[MAX_REQUESTS];
 static int npoll;
@@ -506,7 +509,7 @@ void close_connection(struct connection *conn, int status)
 
 	--n_connections;
 
-	if(status != 200) {
+	if(status != 200 && conn->cmd) {
 		// Make sure errors have a clean cmd
 		char *p;
 
@@ -639,9 +642,9 @@ int new_connection(int csock)
  */
 int read_request(struct connection *conn)
 {
-	int fd;
+// SAM	int fd;
 	int n;
-	char *p, selector;
+// SAM	char *p, selector;
 
 	n = read(SOCKET(conn), conn->cmd + conn->offset, MAX_LINE - conn->offset);
 

@@ -35,6 +35,7 @@ THE REALITY
 - persistent http connections
   - would have to timeout connections
 
+- convert log hits to use write calls
 - flock to logging so mulitple progs can log to the same file
 
 ----- added argv[0] to set syslog name

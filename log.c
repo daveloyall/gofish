@@ -30,44 +30,56 @@
 #include "gofish.h"
 
 
+//#define LOG_HIT_DBG 1
+
 static FILE *log_fp;
 static char *log_name;
-static int log_inuse = 0;
-static int log_must_reopen = 0;
-
 
 static void log_reopen(int sig)
 {
-	if(log_inuse) {
-		log_must_reopen = 1;
-		return;
-	}
-
-	log_must_reopen = 0;
-
 	fclose(log_fp);
-	log_fp = fopen(log_name, "a");
+
+	if((log_fp = fopen(log_name, "a")) == NULL)
+		syslog(LOG_ERR, "Reopen %s: %m", log_name);
 
 	syslog(LOG_WARNING, "Log file reopened.");
 }
 
 
+// We are root and outside the chroot jail
 int log_open(char *logname)
 {
-	log_name = logname; // save for reopen
+	int len = strlen(root_dir);
+
+	// strip the chroot directory if necessary
+	if(strncmp(logname, root_dir, len) == 0) {
+		log_name = logname + len;
+		if(*log_name != '/') --log_name;
+	} else
+		log_name = logname;
 
 	signal(SIGUSR1, log_reopen);
 
-	return (log_fp = fopen(logname, "a")) != NULL;
+	if((log_fp = fopen(logname, "a")) == NULL) return 0;
+
+	if(fchown(fileno(log_fp), uid, gid)) {
+		perror("chown log file");
+	}
+
+	return 1;
 }
 
 
 // Common log file format
 void log_hit(struct connection *conn, unsigned status)
 {
+#ifdef LOG_HIT_DBG
+	static unsigned logcnt = 0;
+#endif
 	char common[80], *p;
 	time_t now;
 	struct tm *t;
+	int n;
 
 	if(!log_fp) return; // nowhere to write!
 
@@ -75,16 +87,19 @@ void log_hit(struct connection *conn, unsigned status)
 	   ((conn->addr & 0xffff0000) == 0xc0a80000 ||
 		conn->addr == 0x7f000001)) return;
 
-	if(log_must_reopen)
-		log_reopen(SIGUSR1);
-
 	time(&now);
 	t = localtime(&now);
 
 	// Get some of the fixed length common stuff out of the way
 	strcpy(common, ntoa(conn->addr));
 	p = common + strlen(common);
+#ifdef LOG_HIT_DBG
+	sprintf(p, " - %u ", logcnt++);
+	p += strlen(p);
+	strftime(p, sizeof(common) - 30, "[%d/%b/%Y:%T %z] \"", t);
+#else
 	strftime(p, sizeof(common) - 30, " - - [%d/%b/%Y:%T %z] \"", t);
+#endif
 	strcat(p, conn->http == HTTP_HEAD ? "HEAD" : "GET");
 
 	if(conn->http) {
@@ -137,47 +152,58 @@ void log_hit(struct connection *conn, unsigned status)
 			}
 
 			// This is 500 + hostname chars max
-			log_inuse = 1;
+		combined_again:
 			if(virtual_hosts)
-				fprintf(log_fp,
-						"%s %s/%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
-						common, conn->host, request, status, conn->len,
-						referer, agent);
+				n = fprintf(log_fp,
+							"%s %s/%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
+							common, conn->host, request, status, conn->len,
+							referer, agent);
 			else
-				fprintf(log_fp,
-						"%s /%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
-						common, request, status, conn->len, referer, agent);
+				n = fprintf(log_fp,
+							"%s /%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
+							common, request, status, conn->len, referer, agent);
+			if(n < 0 && errno == EINTR) {
+				printf("EINTR\n"); // SAM
+				goto combined_again;
+			}
 		} else {
 			// This is 600 + hostname chars max
 			// SAM 600???
-			log_inuse = 1;
+		http_again:
 			if(virtual_hosts)
-				fprintf(log_fp, "%s %s/%.200s\" %u %u\n",
-						common, conn->host, request, status, conn->len);
+				n = fprintf(log_fp, "%s %s/%.200s\" %u %u\n",
+							common, conn->host, request, status, conn->len);
 			else
-				fprintf(log_fp, "%s /%.200s\" %u %u\n",
-						common, request, status, conn->len);
+				n = fprintf(log_fp, "%s /%.200s\" %u %u\n",
+							common, request, status, conn->len);
+			if(n < 0 && errno == EINTR) {
+				printf("EINTR\n"); // SAM
+				goto http_again;
+			}
 		}
 	} else {
 		char *name = conn->cmd ? (*conn->cmd ? conn->cmd : "/") : "[Empty]";
 
 		// This is 400 chars max
-		log_inuse = 1;
-		fprintf(log_fp, "%s %.300s\" %u %u\n", common, name, status, conn->len);
+	gopher_again:
+		n = fprintf(log_fp, "%s %.300s\" %u %u\n", common, name, status, conn->len);
+		if(n < 0 && errno == EINTR) {
+			printf("EINTR\n"); // SAM
+			goto gopher_again;
+		}
 	}
 
 	// every path
 	fflush(log_fp);
-	log_inuse = 0;
-
-	if(log_must_reopen)
-		log_reopen(SIGUSR1);
 }
 
 
 void log_close()
 {
-	(void)fclose(log_fp);
+	if(log_fp) {
+		(void)fclose(log_fp);
+		log_fp = NULL;
+	}
 }
 
 
