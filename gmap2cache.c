@@ -185,11 +185,12 @@ int process_file(char *dir, int level)
 
 		if(!*field[3]) field[3] = portstr;
 		if(!*field[2]) field[2] = hostname;
-		if(!*field[1])
+		if(!*field[1]) {
 			if(*field[0] == 'i')
 				field[1] = "/fake";
 			else
 				field[1] = field[0];
+		}
 
 		if(*(field[1] + 1) != '/') {
 			if(level == 0)

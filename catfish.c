@@ -1,7 +1,7 @@
 /*
  * catfish.c - a gopher proxy server for Opera
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.7 $ $Date: 2002/09/27 03:16:50 $
+ * $Revision: 1.8 $ $Date: 2002/09/29 04:04:37 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the

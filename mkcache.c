@@ -59,12 +59,18 @@ struct extension {
 } exts[] = {
 	{ "txt",	'0', 0 },
 	{ "html",	'h', 0 },
+	{ "htm",	'h', 0 },
 	{ "gif",	'I', 1 },
 	{ "jpg",	'I', 1 },
 	{ "png",	'I', 1 },
 	{ "jpeg",	'I', 1 },
 	{ "gz",		'9', 1 },
+	{ "tgz",	'9', 1 },
+	{ "tar",	'9', 1 },
 	{ "rpm",	'9', 1 },
+	{ "zip",	'9', 1 },
+	{ "Z",		'9', 1 },
+	{ "pdf",	'9', 1 },
 };
 #define N_EXTS	(sizeof(exts) / sizeof(struct extension))
 
@@ -267,6 +273,13 @@ int read_dir(struct entry **entries, char *path, int level)
 		if(*ent->d_name == '.') continue;
 
 		if(strcmp(ent->d_name, "gophermap") == 0) continue;
+
+		if(level == 0 && strcmp(ent->d_name, "favicon.ico") == 0)
+			continue;
+
+		// Do not add the top level icons directory
+		if(level == 0 && strcmp(ent->d_name, "icons") == 0)
+			continue;
 
 		if(isdir(ent, path, len)) {
 			add_entry(entries, nfiles, ent->d_name, 1);

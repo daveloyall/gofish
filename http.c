@@ -315,6 +315,27 @@ static char *mime_image(char *file)
 	return NULL;
 }
 
+static struct mime binary_mimes[] = {
+	{ "pdf",  "application/pdf"  },
+};
+#define N_BINARY_MIMES	(sizeof(binary_mimes) / sizeof(struct mime))
+
+static char *mime_binary(char *file)
+{
+	char *p;
+	int i;
+
+	if((p = strrchr(file, '.'))) {
+		++p;
+
+		for(i = 0; i < N_BINARY_MIMES; ++i)
+			if(strcasecmp(p, binary_mimes[i].ext) == 0)
+				return binary_mimes[i].mime;
+	}
+
+	return "application/octet-stream";
+}
+
 
 /*
  * This routine is exported to GoFish to process http GET requests.
@@ -354,8 +375,13 @@ int http_get(struct connection *conn)
 		type1 = *request++;
 		if(*request && *request != '/') request++;
 		if(*request != '/') {
-			syslog(LOG_WARNING, "Bad request '%s'\n", request);
-			return -1;
+			if(strcmp(request, "vicon.ico") == 0) {
+				type1 = '9';
+				request -= 2; // backup
+			} else {
+				syslog(LOG_WARNING, "Bad request '%s'\n", request);
+				return -1;
+			}
 		}
 
 		if(!valid_type(type1)) {
@@ -381,7 +407,7 @@ int http_get(struct connection *conn)
 			conn->html_trailer = HTML_TRAILER; // SAM
 			mime = "text/html";
 			break;
-		case '9': mime = "application/octet-stream"; break;
+		case '9': mime = mime_binary(request); break;
 		case 'g': mime = "image/gif"; break;
 		case 'h': mime = mime_html; break;
 		case 'I': mime = mime_image(request); break;

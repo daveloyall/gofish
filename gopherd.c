@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.8 $ $Date: 2002/09/27 03:16:50 $
+ * $Revision: 1.9 $ $Date: 2002/09/29 04:04:38 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -53,7 +53,6 @@ static int npoll;
 
 static void start_polling(int csock);
 #else
-// SAM For select, could we tie fd to connection?
 static fd_set readfds, writefds;
 static int nfds;
 
@@ -71,6 +70,7 @@ static int read_request(struct connection *conn);
 static int write_request(struct connection *conn);
 
 
+// SIGUSR1 is handled in log.c
 static void sighandler(int signum)
 {
 	switch(signum) {
@@ -442,7 +442,7 @@ void close_request(struct connection *conn, int status)
 	log_hit(conn, status);
 
 	// Send errors in one place also
-	if(status != 200) send_error(conn, status);
+	if(status != 200 && status != 504) send_error(conn, status);
 
 	// Note: conn[0] never has memory allocated
 	if(conn->conn_n > MIN_REQUESTS && conn->cmd) {
@@ -468,7 +468,7 @@ void close_request(struct connection *conn, int status)
 		FD_CLR(conn->sock, &writefds);
 		if(conn->sock >= nfds - 1)
 			for(nfds = conn->sock - 1; nfds > 0; --nfds)
-				if(ISSET(nfds, &readfds) || ISSET(nfds, &writefds)) {
+				if(FD_ISSET(nfds, &readfds) || FD_ISSET(nfds, &writefds)) {
 					nfds++;
 					break;
 				}
@@ -642,15 +642,15 @@ int read_request(struct connection *conn)
 	else
 #endif
 		if(*conn->cmd != '9') {
-		// SAM does not handle neednl
-		conn->iovs[3].iov_base = ".\r\n";
-		conn->iovs[3].iov_len  = 3;
-	}
+			// SAM does not handle neednl
+			conn->iovs[3].iov_base = ".\r\n";
+			conn->iovs[3].iov_len  = 3;
+		}
 
-	// already is iovs[2].iov_len
-	conn->len +=
+	conn->len =
 		conn->iovs[0].iov_len +
 		conn->iovs[1].iov_len +
+		conn->iovs[2].iov_len +
 		conn->iovs[3].iov_len;
 
 	set_writeable(conn);
@@ -679,6 +679,7 @@ int write_request(struct connection *conn)
 		}
 		else {
 			iov->iov_len -= n;
+			iov->iov_base += n;
 			return 0;
 		}
 

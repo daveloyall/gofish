@@ -1,6 +1,23 @@
+Changes for 0.14:
+
+    GoFish
+
+	* added support for pdf files
+	* bugfix for long files
+	* added log rotation support
+	* added support for favicon.ico
+
+    mkcache
+
+	* added support for favicon.ico
+
 Changes for 0.13:
 
     GoFish
 
 	* better gopher+ client support
 	* fixed poll bug found by Folkert van Heusden
+
+    mkcache
+
+	* ignore top level icons directory

@@ -1,7 +1,7 @@
 /*
  * log.c - log file output for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.7 $ $Date: 2002/09/27 03:16:50 $
+ * $Revision: 1.8 $ $Date: 2002/09/29 04:04:38 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -25,14 +25,38 @@
 #include <time.h>
 #include <netinet/in.h>
 #include <errno.h>
+#include <pthread.h>
+#include <signal.h>
 #include "gopherd.h"
 
 
-static FILE *fp;
+static FILE *log_fp;
+static char *log_name;
+static int log_inuse = 0;
+static int log_must_reopen = 0;
+
+
+static void log_reopen(int sig)
+{
+	if(log_inuse) {
+		log_must_reopen = 1;
+		return;
+	}
+
+	log_must_reopen = 0;
+
+	fclose(log_fp);
+	log_fp = fopen(log_name, "a");
+}
+
 
 int log_open(char *logname)
 {
-	return (fp = fopen(logname, "a")) != NULL;
+	log_name = logname; // save for reopen
+
+	signal(SIGUSR1, log_reopen);
+
+	return (log_fp = fopen(logname, "a")) != NULL;
 }
 
 
@@ -46,8 +70,8 @@ void log_hit(struct connection *conn, unsigned status)
 
 
 	if(ignore_local &&
-	   (conn->addr & 0xffff0000) == 0xc0a80000 ||
-		conn->addr == 0x7f000001) return;
+	   ((conn->addr & 0xffff0000) == 0xc0a80000 ||
+		conn->addr == 0x7f000001)) return;
 
 	time(&now);
 	t = localtime(&now);
@@ -68,16 +92,22 @@ void log_hit(struct connection *conn, unsigned status)
 
 
 	// This is 400 chars max
-	fprintf(fp, "%s - - [%s] \"GET %.300s\" %u %u\n",
-			ntoa(conn->addr), date, name, status, conn->len);
+	log_inuse = 1;
+	if(log_fp) {
+		fprintf(log_fp, "%s - - [%s] \"GET %.300s\" %u %u\n",
+				ntoa(conn->addr), date, name, status, conn->len);
+		fflush(log_fp);
+	}
+	log_inuse = 0;
 
-	(void)fflush(fp);
+	if(log_must_reopen)
+		log_reopen(SIGUSR1);
 }
 
 
 void log_close()
 {
-	(void)fclose(fp);
+	(void)fclose(log_fp);
 }
 
 
@@ -86,10 +116,10 @@ static void send_errno(int sock, char *name, int errnum)
 	char error[1024];
 
 	if(*name == '\0')
-		sprintf(error, "3'<root>' %.500s\r\n",
+		sprintf(error, "3'<root>' %.500s (%d)\r\n",
 				strerror(errnum), errnum);
 	else
-		sprintf(error, "3'%.500s' %.500s\r\n",
+		sprintf(error, "3'%.500s' %.500s (%d)\r\n",
 				name, strerror(errnum), errnum);
 	write(sock, error, strlen(error));
 }
