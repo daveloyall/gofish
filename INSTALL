@@ -1,0 +1,63 @@
+			 GoFish Installation
+			 ===================
+
+RPM
+---
+
+If you have an RPM for your system, install the rpm and go straight
+the to INSTALLATION section.
+
+SRPM
+----
+
+If you have an SRPM for your system, just install and build as you
+would any other SRPM. Then go to the INSTALLATION section.
+
+TARBALL
+-------
+
+  tar zxpf gofish-<version>.tar.gz
+  cd gofish-<version>
+
+Checkout out the gopherd.h file to see if you want to change any of
+the defaults. If you get them right now, you do not need a
+configuration file.
+
+  make all
+
+By default, the files are installed in /usr/local, you can change this
+with the PREFIX variable. For example, `PREFIX=/usr make install'. The
+Makefile contains other install directories that can be changed.
+
+  su root
+  make install
+
+If you want to use the provided init.d script:
+
+  cp init-gofish /etc/rc.d/init.d/gopherd
+
+INSTALLATION
+------------
+
+TO run gopherd, you need a root directory for your gopherspace. The
+default is /var/lib/gopherd. This can be changed in the configuration
+file.
+
+When you are sure things are setup you can start gopherd:
+
+  su root
+  gopherd
+
+Will leave it running in the foreground.
+
+  gopherd -d
+
+Will leave it running in the background. There is an init.d script
+available. You can run it like so:
+
+  /etc/rc.d/init.d/gopherd start
+
+You may want to add some files for your gopherd to serve. Put them in
+/var/lib/gopherd and either run mkcache or create a .cache file.
+
+`man 5 dotcache' for a description of the .cache files.

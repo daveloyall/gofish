@@ -1,0 +1,63 @@
+WHAT IS THIS?
+-------------
+
+Gofish is my attempt to boost the performance of the current
+gopherds. As such, it is very primitive and very much a work in
+progress. However, I do have some design goals. I am running GoFish on
+my 'Winder <http://seanm.ca/>. While it is a great machine, it is not
+the most powerful machine in the world.
+
+ 1) Secure. I do not plan on letting the server run executables.
+
+ 2) Fast. At least as fast as a web server. I am using thttpd as my
+    benchmark.
+
+ 3) Low resource usage. Single process.
+
+ 4) Simple. The daemon will only serve files. Directory listings will
+    be read from the .cache files verbatim. I think this is an
+    important decision. It gives maximum flexibility to the
+    users. They can go from the exteme of writing all the cache files
+    by hand, to having some form of custom, fully automated file
+    insertion program. I plan on providing one such program called
+    `mkcache', but it will not be required.
+
+
+WHAT STAGE IS IT AT?
+--------------------
+
+Well, it compiles... it can serve files... I am using it on YOW.
+
+    gopher://seanm.ca
+
+The current mkcache works, but not well.
+
+
+WHERE CAN I GET IT?
+-------------------
+
+I have RPMS/SRPMS for Redhat x86 and the StrongARM NetWinder. I also
+have a tarball that should compile under almost any modern Unix
+platform.
+
+
+CURRENT ASSUMPTIONS
+-------------------
+
+I am currently using the Linux sendfile(2) call to write out the
+files. Because of this, I do not process the files. The following
+assumption must hold:
+
+  Files must not have any lines containing only a ".".
+
+There is a script called check-files that will verify that the above
+is true. If you have changed the GOPHER_ROOT, you must change it in
+the check-files script also.
+
+CONTACT
+-------
+
+You can contact me about problems/suggestions/donations.
+
+  Sean MacLennan
+  headgopher@seanm.ca
