@@ -71,9 +71,7 @@ EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \
 	init-gofish gofish.spec
 
 
-man_MANS = gofish.1 gofish.5 dotcache.5 gopherd.1 mkcache.1
-
-sysconf_DATA = gofish.conf
+man_MANS = gofish.1 gofish.5 dotcache.5 gopherd.1 mkcache.1 gmap2cache.1
 
 rootdir = $(localstatedir)/lib/gopherd
 icondir = $(rootdir)/icons
@@ -81,8 +79,9 @@ root_DATA = .gopher+
 
 # Extra helper programs
 
-bin_PROGRAMS = mkcache
+bin_PROGRAMS = mkcache gmap2cache
 mkcache_SOURCES = mkcache.c config.c
+gmap2cache_SOURCES = gmap2cache.c config.c
 bin_SCRIPTS = check-files
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
@@ -99,6 +98,10 @@ mkcache_OBJECTS =  mkcache.o config.o
 mkcache_LDADD = $(LDADD)
 mkcache_DEPENDENCIES = 
 mkcache_LDFLAGS = 
+gmap2cache_OBJECTS =  gmap2cache.o config.o
+gmap2cache_LDADD = $(LDADD)
+gmap2cache_DEPENDENCIES = 
+gmap2cache_LDFLAGS = 
 gopherd_OBJECTS =  gopherd.o log.o socket.o config.o http.o
 gopherd_LDADD = $(LDADD)
 gopherd_DEPENDENCIES = 
@@ -114,7 +117,7 @@ man5dir = $(mandir)/man5
 MANS = $(man_MANS)
 
 NROFF = nroff
-DATA =  $(root_DATA) $(sysconf_DATA)
+DATA =  $(root_DATA)
 
 DIST_COMMON =  README ./stamp-h.in AUTHORS COPYING ChangeLog INSTALL \
 Makefile.am Makefile.in NEWS acconfig.h aclocal.m4 config.h.in \
@@ -125,10 +128,10 @@ DISTFILES = $(DIST_COMMON) $(SOURCES) $(HEADERS) $(TEXINFOS) $(EXTRA_DIST)
 
 TAR = gtar
 GZIP_ENV = --best
-DEP_FILES =  .deps/config.P .deps/gopherd.P .deps/http.P .deps/log.P \
-.deps/mkcache.P .deps/socket.P
-SOURCES = $(mkcache_SOURCES) $(gopherd_SOURCES)
-OBJECTS = $(mkcache_OBJECTS) $(gopherd_OBJECTS)
+DEP_FILES =  .deps/config.P .deps/gmap2cache.P .deps/gopherd.P \
+.deps/http.P .deps/log.P .deps/mkcache.P .deps/socket.P
+SOURCES = $(mkcache_SOURCES) $(gmap2cache_SOURCES) $(gopherd_SOURCES)
+OBJECTS = $(mkcache_OBJECTS) $(gmap2cache_OBJECTS) $(gopherd_OBJECTS)
 
 all: all-redirect
 .SUFFIXES:
@@ -246,6 +249,10 @@ mkcache: $(mkcache_OBJECTS) $(mkcache_DEPENDENCIES)
 	@rm -f mkcache
 	$(LINK) $(mkcache_LDFLAGS) $(mkcache_OBJECTS) $(mkcache_LDADD) $(LIBS)
 
+gmap2cache: $(gmap2cache_OBJECTS) $(gmap2cache_DEPENDENCIES)
+	@rm -f gmap2cache
+	$(LINK) $(gmap2cache_LDFLAGS) $(gmap2cache_OBJECTS) $(gmap2cache_LDADD) $(LIBS)
+
 gopherd: $(gopherd_OBJECTS) $(gopherd_DEPENDENCIES)
 	@rm -f gopherd
 	$(LINK) $(gopherd_LDFLAGS) $(gopherd_OBJECTS) $(gopherd_LDADD) $(LIBS)
@@ -358,25 +365,6 @@ uninstall-rootDATA:
 	@$(NORMAL_UNINSTALL)
 	list='$(root_DATA)'; for p in $$list; do \
 	  rm -f $(DESTDIR)$(rootdir)/$$p; \
-	done
-
-install-sysconfDATA: $(sysconf_DATA)
-	@$(NORMAL_INSTALL)
-	$(mkinstalldirs) $(DESTDIR)$(sysconfdir)
-	@list='$(sysconf_DATA)'; for p in $$list; do \
-	  if test -f $(srcdir)/$$p; then \
-	    echo " $(INSTALL_DATA) $(srcdir)/$$p $(DESTDIR)$(sysconfdir)/$$p"; \
-	    $(INSTALL_DATA) $(srcdir)/$$p $(DESTDIR)$(sysconfdir)/$$p; \
-	  else if test -f $$p; then \
-	    echo " $(INSTALL_DATA) $$p $(DESTDIR)$(sysconfdir)/$$p"; \
-	    $(INSTALL_DATA) $$p $(DESTDIR)$(sysconfdir)/$$p; \
-	  fi; fi; \
-	done
-
-uninstall-sysconfDATA:
-	@$(NORMAL_UNINSTALL)
-	list='$(sysconf_DATA)'; for p in $$list; do \
-	  rm -f $(DESTDIR)$(sysconfdir)/$$p; \
 	done
 
 tags: TAGS
@@ -505,7 +493,7 @@ all-recursive-am: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
 
 install-exec-am: install-binPROGRAMS install-sbinPROGRAMS \
-		install-binSCRIPTS install-sysconfDATA
+		install-binSCRIPTS
 install-exec: install-exec-am
 
 install-data-am: install-man install-rootDATA install-data-local
@@ -516,7 +504,7 @@ install-am: all-am
 install: install-am
 uninstall-am: uninstall-binPROGRAMS uninstall-sbinPROGRAMS \
 		uninstall-binSCRIPTS uninstall-man uninstall-rootDATA \
-		uninstall-sysconfDATA
+		uninstall-local
 uninstall: uninstall-am
 all-am: Makefile $(PROGRAMS) $(SCRIPTS) $(MANS) $(DATA) config.h
 all-redirect: all-am
@@ -525,8 +513,7 @@ install-strip:
 installdirs:
 	$(mkinstalldirs)  $(DESTDIR)$(bindir) $(DESTDIR)$(sbindir) \
 		$(DESTDIR)$(bindir) $(DESTDIR)$(mandir)/man1 \
-		$(DESTDIR)$(mandir)/man5 $(DESTDIR)$(rootdir) \
-		$(DESTDIR)$(sysconfdir)
+		$(DESTDIR)$(mandir)/man5 $(DESTDIR)$(rootdir)
 
 
 mostlyclean-generic:
@@ -575,20 +562,34 @@ install-sbinPROGRAMS mostlyclean-compile distclean-compile \
 clean-compile maintainer-clean-compile uninstall-binSCRIPTS \
 install-binSCRIPTS install-man1 uninstall-man1 install-man5 \
 uninstall-man5 install-man uninstall-man uninstall-rootDATA \
-install-rootDATA uninstall-sysconfDATA install-sysconfDATA tags \
-mostlyclean-tags distclean-tags clean-tags maintainer-clean-tags \
-distdir mostlyclean-depend distclean-depend clean-depend \
-maintainer-clean-depend info-am info dvi-am dvi check check-am \
-installcheck-am installcheck all-recursive-am install-exec-am \
+install-rootDATA tags mostlyclean-tags distclean-tags clean-tags \
+maintainer-clean-tags distdir mostlyclean-depend distclean-depend \
+clean-depend maintainer-clean-depend info-am info dvi-am dvi check \
+check-am installcheck-am installcheck all-recursive-am install-exec-am \
 install-exec install-data-local install-data-am install-data install-am \
-install uninstall-am uninstall all-redirect all-am all installdirs \
-mostlyclean-generic distclean-generic clean-generic \
+install uninstall-local uninstall-am uninstall all-redirect all-am all \
+installdirs mostlyclean-generic distclean-generic clean-generic \
 maintainer-clean-generic clean mostlyclean distclean maintainer-clean
 
 
+# Do not override the gofish.conf or icons directories if they exist
 install-data-local:
-	mkdir $(DESTDIR)$(icondir)
-	$(INSTALL_DATA) $(srcdir)/icons/*.gif $(DESTDIR)$(icondir)
+	$(mkinstalldirs) $(DESTDIR)$(sysconfdir)
+	if test -f $(DESTDIR)$(sysconfdir)/gofish.conf; then \
+	  $(INSTALL_DATA) gofish.conf $(DESTDIR)$(sysconfdir)/gofish.conf.new; \
+	else \
+	  $(INSTALL_DATA) gofish.conf $(DESTDIR)$(sysconfdir)/gofish.conf; \
+	fi
+	if test ! -f $(DESTDIR)$(icondir); then \
+		$(mkinstalldirs) $(DESTDIR)$(icondir); \
+		$(INSTALL_DATA) $(srcdir)/icons/*.gif $(DESTDIR)$(icondir); \
+	fi
+
+uninstall-local:
+	rm -f  $(DESTDIR)$(sysconfdir)/gofish.conf
+	rm -f  $(DESTDIR)$(sysconfdir)/gofish.conf.new
+	rm -rf $(DESTDIR)$(icondir)
+	rmdir  $(DESTDIR)$(rootdir)
 
 .gopher+: _gopher+
 	cp _gopher+ .gopher+
@@ -598,11 +599,9 @@ install-data-local:
 gopherd.o http.o: version.h
 
 version.h: gofish.spec
-	@echo "version=`fgrep Version: gofish.spec | cut -d' ' -f2`" > v.sh
-	@echo 'echo "#define GOFISH_VERSION \"$$version\"" > version.h' >> v.sh
-	@sh v.sh
-	@rm v.sh
-	@echo "Updated version.h"
+	@version=`fgrep Version: gofish.spec | cut -d' ' -f2`; \
+	echo "#define GOFISH_VERSION \"$$version\"" > version.h; \
+	echo "Updated version.h to $$version"
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

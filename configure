@@ -1993,7 +1993,7 @@ else
 fi
 done
 
-for ac_func in poll sendfile
+for ac_func in poll writev
 do
 echo $ac_n "checking for $ac_func""... $ac_c" 1>&6
 echo "configure:2000: checking for $ac_func" >&5
@@ -2049,75 +2049,8 @@ fi
 done
 
 
-if test "$ac_cv_func_sendfile" = "yes"; then
-  echo $ac_n "checking sendfile type""... $ac_c" 1>&6
-echo "configure:2055: checking sendfile type" >&5
-  sendfile_type=none
-  cat > conftest.$ac_ext <<EOF
-#line 2058 "configure"
-#include "confdefs.h"
-
-#include <sys/sendfile.h>
-  
-int main() {
-
-  int out_fd, in_fd;
-  off_t offset;
-  size_t count;
-
-  sendfile(out_fd, in_fd, &offset, count);
-  
-; return 0; }
-EOF
-if { (eval echo configure:2073: \"$ac_link\") 1>&5; (eval $ac_link) 2>&5; } && test -s conftest${ac_exeext}; then
-  rm -rf conftest*
-  cat >> confdefs.h <<\EOF
-#define HAVE_LINUX_SENDFILE 1
-EOF
- sendfile_type=Linux
-else
-  echo "configure: failed program was:" >&5
-  cat conftest.$ac_ext >&5
-  rm -rf conftest*
-  
-  cat > conftest.$ac_ext <<EOF
-#line 2085 "configure"
-#include "confdefs.h"
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/uio.h>
-  
-int main() {
-
-  int fd, s;
-  off_t offset, sbytes;
-  size_t nbytes;
-  struct sf_hdtr *hdtr;
-
-  sendfile(fd, s, offset, nbytes, hdtr, &sbytes, 0);
-  
-; return 0; }
-EOF
-if { (eval echo configure:2103: \"$ac_link\") 1>&5; (eval $ac_link) 2>&5; } && test -s conftest${ac_exeext}; then
-  rm -rf conftest*
-  cat >> confdefs.h <<\EOF
-#define HAVE_BSD_SENDFILE 1
-EOF
- sendfile_type=BSD
-else
-  echo "configure: failed program was:" >&5
-  cat conftest.$ac_ext >&5
-fi
-rm -f conftest*
-  
-fi
-rm -f conftest*
-  echo "$ac_t""$sendfile_type" 1>&6
-fi
-
 echo $ac_n "checking http support""... $ac_c" 1>&6
-echo "configure:2121: checking http support" >&5
+echo "configure:2054: checking http support" >&5
 if test "$enable_http" = "no"; then
   cat >> confdefs.h <<\EOF
 #define USE_HTTP 0

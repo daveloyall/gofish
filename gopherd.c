@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.5 $ $Date: 2002/08/30 05:10:59 $
+ * $Revision: 1.6 $ $Date: 2002/09/01 00:50:53 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -39,22 +39,16 @@
 #include <sys/mman.h>
 #endif
 
-#ifdef HAVE_LINUX_SENDFILE
-#include <sys/sendfile.h>
-#endif
-#ifdef HAVE_BSD_SENDFILE
-#include <sys/socket.h>
-#endif
 
 int verbose = 0;
 int max_requests = 0;
 
 
 // Add an extra connection for error replies
-static struct connection conns[MAX_REQUESTS + 1];
+static struct connection conns[MAX_REQUESTS];
 
 #ifdef HAVE_POLL
-static struct pollfd ufds[MAX_REQUESTS + 1];
+static struct pollfd ufds[MAX_REQUESTS];
 static int npoll;
 
 static void start_polling(int csock);
@@ -200,7 +194,10 @@ void gopherd(void)
 	}
 
 	memset(conns, 0, sizeof(conns));
-	for(i = 0; i < MAX_REQUESTS; ++i) conns[i].conn_n = i;
+	for(i = 0; i < MAX_REQUESTS; ++i) {
+		conns[i].status = 200;
+		conns[i].conn_n = i;
+	}
 
 	// These never return
 #ifdef HAVE_POLL
@@ -321,7 +318,7 @@ void start_selecting(int csock)
 }
 #endif
 
-#if !defined(HAVE_SENDFILE) && !defined(HAVE_MMAP)
+#if !defined(HAVE_MMAP)
 #define PROT_READ	0
 #define MAP_SHARED	0
 
@@ -442,26 +439,14 @@ void close_request(struct connection *conn, int status)
 
 	conn->len = conn->offset = 0;
 
-#ifdef HAVE_SENDFILE
-	if(conn->fd) {
-		close(conn->fd);
-		conn->fd = 0;
-	}
-#else
 	if(conn->buf) {
 		munmap(conn->buf, conn->len);
 		conn->buf = NULL;
 	}
-#endif
 
 #ifdef HAVE_POLL
-	if(conn->ufd->fd) {
-		close(conn->ufd->fd);
-		conn->ufd->fd = 0;
-	}
-	conn->ufd->events = 0;
-	conn->ufd->revents = 0;
-
+	if(conn->ufd->fd) close(conn->ufd->fd);
+	memset(conn->ufd, 0, sizeof(struct pollfd));
 	while(npoll > 1 && ufds[npoll - 1].fd == 0) --npoll;
 #else
 	if(conn->sock) {
@@ -479,9 +464,9 @@ void close_request(struct connection *conn, int status)
 #endif
 
 #ifdef USE_HTTP
-	if(conn->hdr) {
-		free(conn->hdr);
-		conn->hdr = NULL;
+	if(conn->http_header) {
+		free(conn->http_header);
+		conn->http_header = NULL;
 	}
 	if(conn->outname) {
 		if(unlink(conn->outname))
@@ -489,7 +474,11 @@ void close_request(struct connection *conn, int status)
 		free(conn->outname);
 		conn->outname = NULL;
 	}
+	conn->html_header  = NULL;
+	conn->html_trailer = NULL;
 #endif
+
+	conn->status = 200;
 }
 
 
@@ -509,30 +498,19 @@ int new_connection(int csock)
 	// Find a free connection
 	// We have one extra sentinel at the end for error replies
 	conn = &conns[1];
-#ifdef HAVE_POLL
-	for(i = 1; i <= MAX_REQUESTS; ++i, ++conn)
-		if(conn->ufd->fd == 0) {
-			conn->ufd->fd = sock;
-			conn->ufd->events = POLLIN;
-			if(i + 1 > npoll) npoll = i + 1;
+	for(i = 1; i < MAX_REQUESTS; ++i, ++conn)
+		if(SOCKET(conn) == 0) {
+			set_readable(conn, sock);
 			break;
 		}
-#else
-	for(i = 1; i <= MAX_REQUESTS; ++i, ++conn)
-		if(conn->sock == 0) {
-			conn->sock = sock;
-			FD_SET(sock, &readfds);
-			if(sock + 1 > nfds) nfds = sock + 1;
-			break;
-		}
-#endif
+
 	if(i > max_requests) max_requests = i;
 
 	conn->addr   = addr;
 	conn->offset = 0;
 	conn->len    = 0;
 
-	if(i == MAX_REQUESTS) {
+	if(i == MAX_REQUESTS - 1) {
 		syslog(LOG_WARNING, "Too many requests.");
 		close_request(conn, 503);
 		return -1;
@@ -572,19 +550,6 @@ int read_request(struct connection *conn)
 	// We alloced an extra space for the '\0'
 	conn->cmd[conn->offset] = '\0';
 
-#if 0
-	// Look for the first \n in case we got a multiline http GET command
-	if((p = strchr(conn->cmd, '\n')) == 0) {
-		if(conn->offset >= MAX_LINE) {
-			close_request(conn, 414);
-			return 1;
-		}
-		return 0; // not an error
-	}
-
-	*p-- = '\0';
-	if(conn->offset > 1 && *p == '\r') *p = '\0';
-#else
 	if(conn->cmd[conn->offset - 1] != '\n') {
 		if(conn->offset >= MAX_LINE) {
 			close_request(conn, 414);
@@ -596,7 +561,6 @@ int read_request(struct connection *conn)
 	conn->cmd[conn->offset - 1] = '\0';
 	if(conn->offset > 1 && conn->cmd[conn->offset - 2] == '\r')
 		conn->cmd[conn->offset - 2] = '\0';
-#endif
 
 	if(verbose > 2) printf("Request '%s'\n", conn->cmd);
 
@@ -625,21 +589,6 @@ int read_request(struct connection *conn)
 		}
 	}
 
-#ifdef HAVE_SENDFILE
-	conn->fd = fd;
-
-	conn->len = lseek(fd, -1, SEEK_END) + 1;
-#if defined(USE_HTTP) && defined(HAVE_BSD_SENDFILE)
-	// BSD: length includes the header
-	if(conn->hdr) conn->len += conn->hdr->iov_len;
-#endif
-	if(*conn->cmd == '9')
-		conn->neednl = 0;
-	else {
-		char c;
-		conn->neednl = read(fd, &c, 1) == 1 && c != '\n';
-	}
-#else
 	conn->len = lseek(fd, 0, SEEK_END);
 
 	conn->buf = mmap(NULL, conn->len, PROT_READ, MAP_SHARED, fd, 0);
@@ -650,134 +599,71 @@ int read_request(struct connection *conn)
 		close_request(conn, 408);
 		return 1;
 	}
-#endif
 
-	conn->offset = 0;
+	memset(conn->iovs, 0, sizeof(conn->iovs));
 
-#ifdef HAVE_POLL
-	conn->ufd->events = POLLOUT;
-#else
-	FD_CLR(conn->sock, &readfds);
-	FD_SET(conn->sock, &writefds);
-#endif
+	if(conn->http_header) {
+		conn->iovs[0].iov_base = conn->http_header;
+		conn->iovs[0].iov_len  = strlen(conn->http_header);
+	}
+
+	if(conn->html_header) {
+		conn->iovs[1].iov_base = conn->html_header;
+		conn->iovs[1].iov_len  = strlen(conn->html_header);
+	}
+
+	conn->iovs[2].iov_base = conn->buf;
+	conn->iovs[2].iov_len  = conn->len;
+
+	if(conn->html_trailer) {
+		conn->iovs[3].iov_base = conn->html_trailer;
+		conn->iovs[3].iov_len  = strlen(conn->html_trailer);
+	}
+	else if(*conn->cmd != '9') {
+		// SAM does not handle neednl
+		conn->iovs[3].iov_base = ".\r\n";
+		conn->iovs[3].iov_len  = 3;
+	}
+
+	// already is iovs[2].iov_len
+	conn->len +=
+		conn->iovs[0].iov_len +
+		conn->iovs[1].iov_len +
+		conn->iovs[3].iov_len;
+
+	set_writeable(conn);
 
 	return 0;
 }
 
 
-#ifdef HAVE_BSD_SENDFILE
 int write_request(struct connection *conn)
 {
-	int n;
-	struct sf_hdtr hdr;
+	int n, i;
+	struct iovec *iov;
 
-	/* You must pass in an address, even if all 0s */
-	memset(&hdr, 0, sizeof(hdr));
-
-#ifdef USE_HTTP
-	if(conn->hdr) {
-		hdr.headers = conn->hdr;
-		hdr.hdr_cnt = 1;
-
-		// You must specify a non-null address, reuse the headers
-		hdr.trailers = conn->hdr;
-	}
-#endif
-
-	if(sendfile(conn->fd, SOCKET(conn), conn->offset, conn->len - conn->offset,
-				&hdr, (off_t *)&n, 0) == 0 && n > 0) {
-		// success
-		// printf("Total success! %d/%d\n", n, conn->len); // SAM
-		if(*conn->cmd != '9') {
-			if(conn->neednl)
-				write(SOCKET(conn), "\n.\r\n", 4);
-			else
-				write(SOCKET(conn), ".\r\n", 3);
-		}
-
-		close_request(conn, 200);
-	}
-	else if(errno == EAGAIN && n > 0) {
-		// success - we just need to poll again
-#ifdef USE_HTTP
-		if(conn->hdr) {
-			if(n >= conn->hdr->iov_len) {
-			  printf("header send n %d hdr %d\n",
-				 n, conn->hdr->iov_len); // SAM
-				conn->offset += n - conn->hdr->iov_len;
-				free(conn->hdr);
-				conn->hdr = NULL;
-			}
-			else {
-				// This should never happen
-			  printf("Only sent %d of %d\n",
-				 n, conn->hdr->iov_len);
-				conn->hdr->iov_base += n;
-				conn->hdr->iov_len  -= n;
-			}
-		} else
-#endif
-		{
-			conn->offset += n;
-			printf("Sent %d of %d\n", conn->offset, conn->len);
-		}
-	} else {
-		// failure
-		perror("sendfile FAILED");
-		send_errno(SOCKET(conn), conn->cmd, errno);
-		close_request(conn, 500);
-		return 1;
-	}
-
-	return 0;
-}
-
-#else /* ! HAVE_BSD_SENDFILE */
-
-int write_request(struct connection *conn)
-{
-	int n;
-
-#ifdef USE_HTTP
-	if(conn->hdr)
-		return http_send_response(conn);
-#endif
-
-#ifdef HAVE_LINUX_SENDFILE
-	n = sendfile(SOCKET(conn), conn->fd, &conn->offset, conn->len - conn->offset);
-#else
-	n = write(SOCKET(conn),
-			  conn->buf + conn->offset,
-			  conn->len - conn->offset);
-	conn->offset += n;
-#endif
+	n = writev(SOCKET(conn), conn->iovs, 4);
 
 	if(n <= 0) {
+		syslog(LOG_ERR, "writev: %m");
 		close_request(conn, 408);
 		return 1;
 	}
 
-	if(conn->offset >= conn->len) {
-		if(*conn->cmd != '9') {
-			int neednl;
-
-#ifdef HAVE_LINUX_SENDFILE
-			neednl = conn->neednl;
-#else
-			neednl = conn->buf[conn->len - 1] != '\n';
-#endif
-			if(neednl)
-				write(SOCKET(conn), "\n.\r\n", 4);
-			else
-				write(SOCKET(conn), ".\r\n", 3);
+	for(iov = conn->iovs, i = 0; i < 4; ++i, ++iov)
+		if(n >= iov->iov_len) {
+			n -= iov->iov_len;
+			iov->iov_len = 0;
+		}
+		else {
+			iov->iov_len -= n;
+			return 0;
 		}
 
-		close_request(conn, 200);
-	}
+	close_request(conn, conn->status);
 
 	return 0;
 }
-#endif /* HAVE_BSD_SENDFILE */
 
 
 void create_pidfile(char *fname)

@@ -266,6 +266,8 @@ int read_dir(struct entry **entries, char *path, int level)
 	while((ent = readdir(dir))) {
 		if(*ent->d_name == '.') continue;
 
+		if(strcmp(ent->d_name, "gophermap") == 0) continue;
+
 		if(isdir(ent, path, len)) {
 			add_entry(entries, nfiles, ent->d_name, 1);
 			++nfiles;

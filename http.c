@@ -41,6 +41,10 @@
 
 static char *os_str;
 
+#define HTML_HEADER	"<html><body><center><table width=\"80%\"><tr><td><pre>\n"
+
+#define HTML_TRAILER "</pre></table></center></body>\n"
+
 static int smart_open(char *name, char type);
 
 
@@ -95,16 +99,13 @@ static int http_build_response(struct connection *conn, int status, char *type)
 		sprintf(p, "Content-Type: %s\r\n", type);
 	}
 	p += strlen(p);
-	sprintf(p, "Content-Length: %d\r\n\r\n", conn->len);
+	len = conn->len;
+	if(conn->html_header) len += strlen(conn->html_header);
+	if(conn->html_trailer) len += strlen(conn->html_trailer);
+	sprintf(p, "Content-Length: %d\r\n\r\n", len);
 
-	len = strlen(str);
-	if((conn->hdr = malloc(sizeof(struct iovec) + len + 1)) == NULL)
+	if((conn->http_header = strdup(str)) == NULL)
 		return 1;
-
-	p = (char*)(conn->hdr) + sizeof(struct iovec);
-	strcpy(p, str);
-	conn->hdr->iov_base = p;
-	conn->hdr->iov_len  = len;
 
 	conn->status = status;
 
@@ -112,33 +113,18 @@ static int http_build_response(struct connection *conn, int status, char *type)
 }
 
 
-/* Exported to send the response before the file */
-int http_send_response(struct connection *conn)
+static void out_external(int out, char *host, char *port, char type, char *url)
 {
-	int n;
-
-	n = writev(SOCKET(conn), conn->hdr, 1);
-
-	if(n <= 0) {
-		close_request(conn, 408);
-		return 1;
+	++url;
+	write_str(out, host);
+	write_str(out, ":");
+	write_str(out, port);
+	write_str(out, "/");
+	if(type == '1' && (strcmp(url, "/") == 0 || !*url)) {
+	} else {
+		write_out(out, &type, 1);
+		write_str(out, url);
 	}
-
-	if(n >= conn->hdr->iov_len) {
-		free(conn->hdr);
-		conn->hdr = NULL;
-
-		if(conn->len == 0)
-			// This is an error status - no data to send
-			close_request(conn, conn->status);
-
-		return 0;
-	}
-
-	conn->hdr->iov_base += n;
-	conn->hdr->iov_len  -= n;
-
-	return 1;
 }
 
 
@@ -157,10 +143,10 @@ static int http_dir_line(int out, char *line)
 	for(port = p; *p && *p != '\t'; ++p) ;
 	*p++ = '\0';
 
-	write_str(out, "<tr>\n");
+	write_str(out, "  <tr>\n");
 
 	if(*line == 'i') {
-		write_str(out, " <td>&nbsp;<td>");
+		write_str(out, "   <td>&nbsp;<td>");
 		write_str(out, line + 1);
 		write_out(out, "\n", 1);
 	} else {
@@ -174,27 +160,20 @@ static int http_dir_line(int out, char *line)
 		}
 
 		sprintf(buf,
-				" <td width=%d>"
+				"   <td width=%d>"
 				"<img src=\"/g/icons/gopher_%s.gif\" "
-				"width=%d height=%d alt=\"[%s]\">\n <td>",
+				"width=%d height=%d alt=\"[%s]\">\n   <td>",
 				icon_width + 4, icon, icon_width, icon_height, icon);
 		write_str(out, buf);
 
 		if(strcmp(host, hostname) && strcmp(host, "localhost")) {
 			write_str(out, desc);
-			write_str(out, " <small>[gopher://");
-			write_str(out, host);
-			if(strcmp(port, "70")) {
-				write_str(out, ":");
-				write_str(out, port);
-			}
-			write_str(out, "/");
-			if(*line == '1' && (strcmp(url + 1, "/") == 0 || !*(url + 1))) {
-			} else {
-				write_out(out, line, 1);
-				write_str(out, url + 1);
-			}
-			write_str(out, "]</small>\n");
+			write_str(out, " <a href=\"gopher://");
+			out_external(out, host, port, *line, url);
+			write_str(out, "\">[gopher]</a>\n");
+			write_str(out, " <a href=\"http://");
+			out_external(out, host, port, *line, url);
+			write_str(out, "\">[http]</a>\n");
 		} else {
 			write_str(out, "<a href=\"/");
 			write_out(out, line, 1);
@@ -231,14 +210,17 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 	}
 
 	if(*dir == '\0' || strcmp(dir, "/") == 0) dir = "[Root]";
+
+	// The table inside a table works better for Opera
 	sprintf(buffer,
 			"<!DOCTYPE HTML PUBLIC "
 			"\"-//W3C//DTD HTML 4.01 Transitional//EN\">\n"
 			"<html>\n<head><title>%.80s</title></head>\n"
 			"<body bgcolor=white>\n\n"
-			"<center>\n<table border=0 width=\"90%%\">\n" // table
-			"<tr><td colspan=2><h1>%.80s</h1>\n"
-			"<tr><td colspan=2><hr>\n",
+			"<table border=0 width=\"80%%\" align=center>\n"
+			"<tr><td><h1>%.80s</h1>\n"
+			"<tr><td><hr>\n"
+			"<tr><td>\n <table border=0>\n",
 			dir, dir);
 	write_str(out, buffer);
 
@@ -273,14 +255,13 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 		return -1;
 	}
 
-	write_str(out, "<tr><td colspan=2><hr>\n"
-		  "<tr><td colspan=2><small>"
-		  "<a href=\"http://gofish.sourceforge.net/\">"
-		  "GoFish " GOFISH_VERSION
-		  "</a> gopher to http gateway.</small>\n"
-		  "</table>\n</center>\n");
-
-	write_str(out, "\n</body>\n</html>\n");
+	write_str(out, " </table>\n<tr><td><hr>\n"
+			  "<tr><td><small>"
+			  "<a href=\"http://gofish.sourceforge.net/\">"
+			  "GoFish " GOFISH_VERSION
+			  "</a> gopher to http gateway.</small>\n"
+			  "</table>\n"
+			  "\n</body>\n</html>\n");
 
 	close(fd);
 
@@ -392,7 +373,12 @@ int http_get(struct connection *conn)
 			if(fd < 0) return -1;
 			mime = mime_html;
 			break;
-		case '0': mime = "text/plain"; break;
+		case '0':
+			// htmlize it
+			conn->html_header  = HTML_HEADER; // SAM
+			conn->html_trailer = HTML_TRAILER; // SAM
+			mime = "text/html";
+			break;
 		case '9': mime = "application/octet-stream"; break;
 		case 'g': mime = "image/gif"; break;
 		case 'h': mime = mime_html; break;

@@ -1,7 +1,7 @@
 /*
  * gopherd.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.5 $ $Date: 2002/08/30 05:10:59 $
+ * $Revision: 1.6 $ $Date: 2002/09/01 00:50:53 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -30,7 +30,7 @@
 
 #define MAX_HOSTNAME	65
 #define MAX_LINE		1024
-#define MAX_REQUESTS	16
+#define MAX_REQUESTS	25
 #define MIN_REQUESTS	4
 #define GOPHER_BACKLOG	5 // helps when backed up
 
@@ -61,25 +61,21 @@ struct connection {
 	int conn_n;
 #ifdef HAVE_POLL
 	struct pollfd *ufd;
-#define SOCKET(c)	((c)->ufd->fd)
 #else
 	int sock;
-#define SOCKET(c)	((c)->sock)
 #endif
 	unsigned addr;
 	char *cmd;
 	off_t offset;
 	size_t len;
-#ifdef HAVE_SENDFILE
-	int fd;
-	int neednl;
-#else
 	unsigned char *buf;
-#endif
-#if defined(USE_HTTP) || defined(USE_BSD_SENDFILE)
-	struct iovec *hdr;
-	char *outname;
 	int   status;
+	struct iovec iovs[4];
+#if defined(USE_HTTP)
+	char *http_header;
+	char *html_header;
+	char *html_trailer;
+	char *outname;
 #endif
 };
 
@@ -120,5 +116,40 @@ int http_init(void);
 void http_cleanup(void);
 int http_get(struct connection *conn);
 int http_send_response(struct connection *conn);
+
+#if MAX_REQUESTS < 2
+#error You must have at least 2 requests!
+#endif
+
+#ifdef HAVE_POLL
+
+#define SOCKET(c)	((c)->ufd->fd)
+
+#define set_readable(c, sock) \
+	do { \
+		(c)->ufd->fd = sock; \
+		(c)->ufd->events = POLLIN; \
+		if((c)->conn_n + 1 > npoll) npoll = (c)->conn_n + 1; \
+	} while(0)
+
+#define set_writeable(c) \
+	(c)->ufd->events = POLLOUT
+
+#else
+
+#define SOCKET(c)	((c)->sock)
+
+#define set_readable(c, sock) \
+	do { \
+		(c)->sock = sock; \
+		FD_SET(sock, &readfds); \
+		if(sock + 1 > nfds) nfds = sock + 1; \
+	} while(0)
+
+#define set_writeable(c) \
+	FD_CLR((c)->sock, &readfds); \
+	FD_SET((c)->sock, &writefds)
+
+#endif
 
 #endif /* _GOFISH_H_ */

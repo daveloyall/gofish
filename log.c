@@ -1,7 +1,7 @@
 /*
  * log.c - log file output for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.4 $ $Date: 2002/08/30 05:10:59 $
+ * $Revision: 1.5 $ $Date: 2002/09/01 00:50:53 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -46,8 +46,8 @@ void log_hit(struct connection *conn, unsigned status)
 
 
 	if(ignore_local &&
-	   ((htonl(conn->addr) & 0xffff0000) == 0xc0a80000 ||
-		htonl(conn->addr) == 0x7f000001)) return;
+	   (conn->addr & 0xffff0000) == 0xc0a80000 ||
+		conn->addr == 0x7f000001) return;
 
 	time(&now);
 	t = localtime(&now);
@@ -57,7 +57,7 @@ void log_hit(struct connection *conn, unsigned status)
 #ifdef USE_HTTP
 	if(conn->status) {
 		// http request
-		name = conn->cmd += 4;
+		name = conn->cmd + 4;
 		while(*name == '/') ++name;
 		strcat(name, " HTTP");
 		conn->status = 0;
