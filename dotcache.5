@@ -25,28 +25,28 @@ match the gopher spec. Here is my take on a BNF for GoFish.
   <type><desc>\fBtab\fR[019]<path>\fBtab\fR<server>\fBtab\fR<port>
 .PP
 .B tab
-- is the ASCII tab character as per the gopher spec
+\- is the ASCII tab character as per the gopher spec
 .br
 .B <type>
-- can be any gopher type but should match the filetype in some way
+\- can be any gopher type but should match the filetype in some way
 .br
 .B <desc>
-- is a description of the file. This field can contain any ascii text
+\- is a description of the file. This field can contain any ascii text
 except
 .BR tab
 .
 .br
 .B [019]
-- GoFish allowed file types. See below.
+\- GoFish allowed file types. See below.
 .br
 .B <pathname>
-- is the path for the file, rooted at the chroot jail home
+\- is the path for the file, rooted at the chroot jail home
 .br
 .B <server>
-- is the server name. This does not have to be local.
+\- is the server name. This does not have to be local.
 .br
 .B <port>
-- is the port number. Usually 70.
+\- is the port number. Usually 70.
 .SH EXAMPLE
 .nf
 0Text File	0/text.txt	domain.com	70
@@ -78,7 +78,7 @@ be displayed if possible.
 .PP
 GoFish must run as root to be able to accept connections on the
 privileged port 70.  However, it does not need to be root to serve the
-files.  GoFish drops to a non-privileged user while opening the file.
+files.  GoFish drops to a non\-privileged user while opening the file.
 This means you can protect special files if you want. GoFish has no
 checking, it will server any file that the user knows the name of.
 .SH "SEE ALSO"
