@@ -1,7 +1,7 @@
 /*
  * socket.c - socket utilities for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.8 $ $Date: 2002/09/29 04:04:38 $
+ * $Revision: 1.9 $ $Date: 2002/10/05 02:06:36 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

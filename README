@@ -87,6 +87,23 @@ default. To disable the feature:
 
 	./configure --disable-http
 
+The http gateway will honour favicon.ico requests. Drop a favicon.ico
+file in the gopher root. mkcache ignores this file.
+
+
+LOG ROTATION
+------------
+
+GoFish supports log rotation. Move the log to a new name. Then send a
+USR1 signal to GoFish. It will close the old log and create a new
+file. No log entries will be lost. After the signal, the old log
+should be up to date.
+
+Example: (note that kill line uses backwards ticks, not single quotes)
+
+	mv /var/lib/gopherd.log /var/lib/gopherd.log.1
+	kill -USR1 `cat /var/run/gopherd.pid`
+
 
 CONTACT
 -------

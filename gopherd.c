@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.9 $ $Date: 2002/09/29 04:04:38 $
+ * $Revision: 1.10 $ $Date: 2002/10/05 02:06:36 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -60,7 +60,7 @@ static void start_selecting(int csock);
 #endif
 
 
-static uid_t real_uid;
+static uid_t root_uid;
 
 // forward references
 static void gopherd(void);
@@ -107,7 +107,7 @@ static void cleanup()
      * Free any cached memory.
      */
 	for(++conn, i = 1; i < MAX_REQUESTS; ++i, ++conn) {
-		if(SOCKET(conn)) close_request(conn, 500);
+		if(SOCKET(conn) != -1) close_request(conn, 500);
 		if(conn->cmd) free(conn->cmd);
 	}
 
@@ -167,9 +167,6 @@ void gopherd(void)
 		exit(1);
 	}
 
-	real_uid = getuid();
-	setgid(gid);
-
 	if(chroot(root_dir)) {
 #ifdef ALLOW_NON_ROOT
 		if(errno == EPERM)
@@ -192,6 +189,10 @@ void gopherd(void)
 		syslog(LOG_ERR, "Unable to create socket\n");
 		exit(1);
 	}
+
+	root_uid = getuid();
+	seteuid(uid);
+	setgid(gid);
 
 	memset(conns, 0, sizeof(conns));
 	for(i = 0; i < MAX_REQUESTS; ++i) {
@@ -216,8 +217,10 @@ void start_polling(int csock)
 
 	memset(ufds, 0, sizeof(ufds));
 
-	for(i = 0; i < MAX_REQUESTS; ++i)
+	for(i = 0; i < MAX_REQUESTS; ++i) {
+		ufds[i].fd = -1;
 		conns[i].ufd = &ufds[i];
+	}
 
 	// Now it is safe to install
 	atexit(cleanup);
@@ -289,6 +292,8 @@ void start_selecting(int csock)
 
 	FD_ZERO(&readfds);
 	FD_ZERO(&writefds);
+
+	for(i = 0; i < MAX_REQUESTS; ++i) conns[i].sock = -1;
 
 	FD_SET(csock, &readfds);
 	nfds = csock + 1;
@@ -457,13 +462,13 @@ void close_request(struct connection *conn, int status)
 		conn->buf = NULL;
 	}
 
+	if(SOCKET(conn) != -1) {
+		close(SOCKET(conn));
 #ifdef HAVE_POLL
-	if(conn->ufd->fd) close(conn->ufd->fd);
-	memset(conn->ufd, 0, sizeof(struct pollfd));
-	while(npoll > 1 && ufds[npoll - 1].fd == 0) --npoll;
+		conn->ufd->fd = -1;
+		conn->ufd->revents = 0;
+		while(npoll > 1 && ufds[npoll - 1].fd == -1) --npoll;
 #else
-	if(conn->sock) {
-		close(conn->sock);
 		FD_CLR(conn->sock, &readfds);
 		FD_CLR(conn->sock, &writefds);
 		if(conn->sock >= nfds - 1)
@@ -472,9 +477,9 @@ void close_request(struct connection *conn, int status)
 					nfds++;
 					break;
 				}
-		conn->sock = 0;
-	}
+		conn->sock = -1;
 #endif
+	}
 
 #ifdef USE_HTTP
 	if(conn->http_header) {
@@ -503,16 +508,19 @@ int new_connection(int csock)
 	struct connection *conn;
 
 
+	seteuid(root_uid);
+
 	if((sock = accept_socket(csock, &addr)) <= 0) {
 		syslog(LOG_WARNING, "Accept connection: %m");
 		return -1;
 	}
 
+	seteuid(uid);
+
 	// Find a free connection
 	// We have one extra sentinel at the end for error replies
-	conn = &conns[1];
-	for(i = 1; i < MAX_REQUESTS; ++i, ++conn)
-		if(SOCKET(conn) == 0) {
+	for(conn = &conns[1], i = 1; i < MAX_REQUESTS; ++i, ++conn)
+		if(SOCKET(conn) == -1) {
 			set_readable(conn, sock);
 			break;
 		}
@@ -525,7 +533,7 @@ int new_connection(int csock)
 
 	if(i == MAX_REQUESTS - 1) {
 		syslog(LOG_WARNING, "Too many requests.");
-		close_request(conn, 503);
+		close_request(conn, 403);
 		return -1;
 	}
 
@@ -587,23 +595,15 @@ int read_request(struct connection *conn)
 			*p = '\0';
 	}
 
-	seteuid(uid);
-	fd = smart_open(conn->cmd);
-	seteuid(real_uid);
+	if(strncmp(conn->cmd, "GET ", 4) == 0)
+		// Someone did an http://host:70/
+		fd = http_get(conn);
+	else
+		fd = smart_open(conn->cmd);
 
 	if(fd < 0) {
-		if(strncmp(conn->cmd, "GET ", 4) == 0 ||
-		   strncmp(conn->cmd, "HEAD ", 5) == 0) {
-			// Someone did an http://host:70/
-			if((fd = http_get(conn)) < 0) {
-				close_request(conn, 404);
-				return 1;
-			}
-		}
-		else {
-			close_request(conn, 404);
-			return 1;
-		}
+		close_request(conn, 404);
+		return 1;
 	}
 
 	conn->len = lseek(fd, 0, SEEK_END);
@@ -611,7 +611,8 @@ int read_request(struct connection *conn)
 	conn->buf = mmap(NULL, conn->len, PROT_READ, MAP_SHARED, fd, 0);
 	close(fd);
 
-	if(conn->buf == NULL) {
+	// mmap will fail on a zero length file
+	if(conn->buf == NULL && conn->len != 0) {
 		syslog(LOG_ERR, "mmap: %m");
 		close_request(conn, 408);
 		return 1;
@@ -642,9 +643,13 @@ int read_request(struct connection *conn)
 	else
 #endif
 		if(*conn->cmd != '9') {
-			// SAM does not handle neednl
-			conn->iovs[3].iov_base = ".\r\n";
-			conn->iovs[3].iov_len  = 3;
+			if(conn->len > 0 && conn->buf[conn->len - 1] != '\n') {
+				conn->iovs[3].iov_base = "\r\n.\r\n";
+				conn->iovs[3].iov_len  = 5;
+			} else {
+				conn->iovs[3].iov_base = ".\r\n";
+				conn->iovs[3].iov_len  = 3;
+			}
 		}
 
 	conn->len =

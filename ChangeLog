@@ -1,3 +1,13 @@
+Changes for 0.15:
+
+    GoFish
+
+	* fix for zero length files
+	* fix for files not ending in NL
+	* fix for check_files
+	* moved seteuid
+	* cleanups
+
 Changes for 0.14:
 
     GoFish
