@@ -291,6 +291,7 @@ struct mime {
 	char *mime;
 };
 
+// SAM Put this in config file.
 static struct mime image_mimes[] = {
 	{ "gif",  "image/gif"  },
 	{ "jpg",  "image/jpeg" },
@@ -375,8 +376,12 @@ int http_get(struct connection *conn)
 		type1 = *request++;
 		if(*request && *request != '/') request++;
 		if(*request != '/') {
+			// SAM Rethink this
 			if(strcmp(request, "vicon.ico") == 0) {
 				type1 = '9';
+				request -= 2; // backup
+			} else if(strcmp(request, "bots.txt") == 0) {
+				type1 = '1';
 				request -= 2; // backup
 			} else {
 				syslog(LOG_WARNING, "Bad request '%s'\n", request);

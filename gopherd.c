@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.10 $ $Date: 2002/10/05 02:06:36 $
+ * $Revision: 1.11 $ $Date: 2002/10/15 03:16:57 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -41,7 +41,7 @@
 
 
 int verbose = 0;
-int max_requests = 0;
+int max_requests = 1; // we don't care about 1
 
 
 // Add an extra connection for error replies
@@ -200,6 +200,10 @@ void gopherd(void)
 		conns[i].conn_n = i;
 	}
 
+#ifdef USE_CACHE	
+	mmap_init();
+#endif	
+
 	// These never return
 #ifdef HAVE_POLL
 	start_polling(csock);
@@ -290,10 +294,10 @@ void start_selecting(int csock)
 	struct connection *conn;
 	fd_set cur_reads, cur_writes;
 
+	for(n = 0; n < MAX_REQUESTS; ++n) conns[n].sock = -1;
+
 	FD_ZERO(&readfds);
 	FD_ZERO(&writefds);
-
-	for(i = 0; i < MAX_REQUESTS; ++i) conns[i].sock = -1;
 
 	FD_SET(csock, &readfds);
 	nfds = csock + 1;
@@ -326,8 +330,8 @@ void start_selecting(int csock)
 				--n;
 				if((conn = find_conn(fd)))
 					write_request(conn);
-					else
-						syslog(LOG_DEBUG, "No connection found for write fd");
+				else
+					syslog(LOG_DEBUG, "No connection found for write fd");
 			}
 		}
 
@@ -441,7 +445,7 @@ static int smart_open(char *name)
 
 void close_request(struct connection *conn, int status)
 {
-	if(verbose) printf("Close request\n");
+	if(verbose > 2) printf("Close request\n");
 
 	// Log hits in one place
 	log_hit(conn, status);
@@ -458,7 +462,11 @@ void close_request(struct connection *conn, int status)
 	conn->len = conn->offset = 0;
 
 	if(conn->buf) {
+#ifdef USE_CACHE	
+		mmap_release(conn->buf);
+#else	
 		munmap(conn->buf, conn->len);
+#endif	
 		conn->buf = NULL;
 	}
 
@@ -507,47 +515,47 @@ int new_connection(int csock)
 	int i;
 	struct connection *conn;
 
-
 	seteuid(root_uid);
 
-	if((sock = accept_socket(csock, &addr)) <= 0) {
-		syslog(LOG_WARNING, "Accept connection: %m");
-		return -1;
-	}
+	while(1) {
+		sock = accept_socket(csock, &addr);
 
-	seteuid(uid);
+		if(sock <= 0) {
+			seteuid(uid);
 
-	// Find a free connection
-	// We have one extra sentinel at the end for error replies
-	for(conn = &conns[1], i = 1; i < MAX_REQUESTS; ++i, ++conn)
-		if(SOCKET(conn) == -1) {
-			set_readable(conn, sock);
-			break;
+			if(errno == EWOULDBLOCK)
+				return 0;
+
+			syslog(LOG_WARNING, "Accept connection: %m");
+			return -1;
 		}
 
-	if(i > max_requests) max_requests = i;
+		// Find a free connection
+		// We have one extra sentinel at the end for error replies
+		for(conn = &conns[1], i = 1; i < MAX_REQUESTS; ++i, ++conn)
+			if(SOCKET(conn) == -1) {
+				set_readable(conn, sock);
+				break;
+			}
 
-	conn->addr   = addr;
-	conn->offset = 0;
-	conn->len    = 0;
+		if(i > max_requests) {
+			max_requests = i;
+			syslog(LOG_DEBUG, "Max_requests %d\n", max_requests);
+		}
 
-	if(i == MAX_REQUESTS - 1) {
-		syslog(LOG_WARNING, "Too many requests.");
-		close_request(conn, 403);
-		return -1;
+		conn->addr   = addr;
+		conn->offset = 0;
+		conn->len    = 0;
+
+		if(i == MAX_REQUESTS - 1) {
+			syslog(LOG_WARNING, "Too many requests.");
+			close_request(conn, 403);
+		}
+		else if(!conn->cmd && !(conn->cmd = malloc(MAX_LINE + 1))) {
+			syslog(LOG_WARNING, "Out of memory.");
+			close_request(conn, 503);
+		}
 	}
-
-	if(fcntl(sock, F_SETFL, O_NONBLOCK)) {
-		close_request(conn, 500);
-		return -1;
-	}
-
-	if(!conn->cmd && !(conn->cmd = malloc(MAX_LINE + 1))) {
-		close_request(conn, 503);
-		return -1;
-	}
-
-	return 0;
 }
 
 
@@ -560,8 +568,10 @@ int read_request(struct connection *conn)
 	n = read(SOCKET(conn), conn->cmd + conn->offset, MAX_LINE - conn->offset);
 
 	if(n <= 0) {
-		// If we can't read, we probably can't write ....
-		syslog(LOG_ERR, "Read error %m");
+		if(errno == EAGAIN) {
+			return 0;
+		}
+		syslog(LOG_ERR, "Read error (%d): %m", errno);
 		close_request(conn, 408);
 		return 1;
 	}
@@ -583,11 +593,11 @@ int read_request(struct connection *conn)
 	if(conn->offset > 1 && conn->cmd[conn->offset - 2] == '\r')
 		conn->cmd[conn->offset - 2] = '\0';
 
-	if(verbose > 2) printf("Request '%s'\n", conn->cmd);
+	if(verbose) printf("%08x: Request '%s'\n", conn->addr, conn->cmd);
 
 	// For gopher+ clients - ignore tab and everything after it
 	if((p = strchr(conn->cmd, '\t'))) {
-		if(verbose > 2) printf("  Gopher+\n");
+		if(verbose) printf("  Gopher+\n");
 		if(strcmp(conn->cmd, "\t$") == 0)
 			// UMN client - got this idea from floodgap.com
 			strcpy(conn->cmd, "0/.gopher+");
@@ -608,7 +618,11 @@ int read_request(struct connection *conn)
 
 	conn->len = lseek(fd, 0, SEEK_END);
 
+#ifdef USE_CACHE
+	conn->buf = mmap_get(conn, fd);
+#else	
 	conn->buf = mmap(NULL, conn->len, PROT_READ, MAP_SHARED, fd, 0);
+#endif
 	close(fd);
 
 	// mmap will fail on a zero length file

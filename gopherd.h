@@ -1,7 +1,7 @@
 /*
  * gopherd.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.10 $ $Date: 2002/10/05 02:06:36 $
+ * $Revision: 1.11 $ $Date: 2002/10/15 03:16:57 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -32,7 +32,7 @@
 #define MAX_LINE		1024
 #define MAX_REQUESTS	25
 #define MIN_REQUESTS	4
-#define GOPHER_BACKLOG	5 // helps when backed up
+#define GOPHER_BACKLOG	100 // helps when backed up
 
 // If you leave GOPHER_HOST unset, it will default to your
 // your hostname.
@@ -117,6 +117,14 @@ int http_init(void);
 void http_cleanup(void);
 int http_get(struct connection *conn);
 int http_send_response(struct connection *conn);
+
+#ifdef USE_CACHE
+// exported from mmap_cache.c
+void mmap_init(void);
+unsigned char *mmap_get(struct connection *conn, int fd);
+void mmap_release(unsigned char *buf);
+#endif
+
 
 #if MAX_REQUESTS < 2
 #error You must have at least 2 requests!

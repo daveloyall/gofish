@@ -1,7 +1,7 @@
 # Rules for GoFish gopher server
 
 sbin_PROGRAMS = gopherd
-gopherd_SOURCES = gopherd.c log.c socket.c config.c http.c
+gopherd_SOURCES = gopherd.c log.c socket.c config.c http.c mmap_cache.c
 
 EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \
 	init-gofish gofish.spec

@@ -1,7 +1,7 @@
 /*
  * socket.c - socket utilities for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.9 $ $Date: 2002/10/05 02:06:36 $
+ * $Revision: 1.10 $ $Date: 2002/10/15 03:16:57 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -53,6 +54,12 @@ int listen_socket(int port)
 		return -1;
 	}
 
+	if((optval = fcntl(s, F_GETFL, 0)) == -1 ||
+	   fcntl(s, F_SETFL, optval | O_NONBLOCK)) {
+		close(s);
+		return -1;
+	}
+
 	return s;
 }
 
@@ -60,11 +67,18 @@ int accept_socket(int sock, unsigned *addr)
 {
 	struct sockaddr_in sock_name;
 	int addrlen = sizeof(sock_name);
-	int new;
+	int new, flags;
 
-	if((new = accept (sock, (struct sockaddr *)&sock_name, &addrlen)) >= 0)
+	if((new = accept (sock, (struct sockaddr *)&sock_name, &addrlen)) >= 0) {
 		if(addr)
 			*addr = htonl(sock_name.sin_addr.s_addr);
+		flags = fcntl(new, F_GETFL, 0);
+		if(flags == -1 || fcntl(new, F_SETFL, flags | O_NONBLOCK) == -1) {
+			printf("fcntl failed\n");
+			close(new);
+			new = -1;
+		}
+	}
 
 	return new;
 }

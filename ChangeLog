@@ -1,3 +1,11 @@
+Changes for 0.16:
+
+    GoFish
+
+	* patch from Goetz Hoffart for select bug
+	* security fix for setuid if accept failed
+	* rewrote new_connection to accept until EWOULDBLOCK
+
 Changes for 0.15:
 
     GoFish

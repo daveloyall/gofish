@@ -2,10 +2,12 @@ WHAT IS THIS?
 -------------
 
 Gofish is my attempt to boost the performance of the current
-gopherds. As such, it is very primitive and very much a work in
-progress. However, I do have some design goals. I am running GoFish on
+gopherds. However, I do have some design goals. I am running GoFish on
 my 'Winder <http://seanm.ca/>. While it is a great machine, it is not
 the most powerful machine in the world.
+
+Design Goals
+------------
 
  1) Secure. I do not plan on letting the server run executables.
 
@@ -21,16 +23,6 @@ the most powerful machine in the world.
     by hand, to having some form of custom, fully automated file
     insertion program. I plan on providing one such program called
     `mkcache', but it will not be required.
-
-
-WHAT STAGE IS IT AT?
---------------------
-
-Well, it compiles... it can serve files... I am using it on YOW.
-
-    gopher://seanm.ca
-
-The current mkcache works.
 
 
 WHERE CAN I GET IT?

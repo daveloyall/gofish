@@ -65,7 +65,7 @@ PACKAGE = @PACKAGE@
 VERSION = @VERSION@
 
 sbin_PROGRAMS = gopherd
-gopherd_SOURCES = gopherd.c log.c socket.c config.c http.c
+gopherd_SOURCES = gopherd.c log.c socket.c config.c http.c mmap_cache.c
 
 EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \
 	init-gofish gofish.spec
@@ -101,7 +101,7 @@ gmap2cache_OBJECTS =  gmap2cache.o config.o
 gmap2cache_LDADD = $(LDADD)
 gmap2cache_DEPENDENCIES = 
 gmap2cache_LDFLAGS = 
-gopherd_OBJECTS =  gopherd.o log.o socket.o config.o http.o
+gopherd_OBJECTS =  gopherd.o log.o socket.o config.o http.o mmap_cache.o
 gopherd_LDADD = $(LDADD)
 gopherd_DEPENDENCIES = 
 gopherd_LDFLAGS = 
@@ -126,7 +126,8 @@ DISTFILES = $(DIST_COMMON) $(SOURCES) $(HEADERS) $(TEXINFOS) $(EXTRA_DIST)
 TAR = gtar
 GZIP_ENV = --best
 DEP_FILES =  .deps/config.P .deps/gmap2cache.P .deps/gopherd.P \
-.deps/http.P .deps/log.P .deps/mkcache.P .deps/socket.P
+.deps/http.P .deps/log.P .deps/mkcache.P .deps/mmap_cache.P \
+.deps/socket.P
 SOURCES = $(mkcache_SOURCES) $(gmap2cache_SOURCES) $(gopherd_SOURCES)
 OBJECTS = $(mkcache_OBJECTS) $(gmap2cache_OBJECTS) $(gopherd_OBJECTS)
 
