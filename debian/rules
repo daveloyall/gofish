@@ -19,7 +19,6 @@ config.status: configure
 	test -e debian/control
 	CFLAGS="${CFLAGS}" ./configure --prefix=/usr --sysconfdir=/etc \
 				       --mandir=/usr/share/man \
-				       --with-gopherroot=/var/gopher \
 				       --localstatedir=/var \
 				       --build=${BGT} --host=${HGT} \
 				       ${CONFIG_FLAGS}
@@ -63,7 +62,7 @@ binary-gofish: install
 ifeq (,$(findstring nostrip,${DEB_BUILD_OPTIONS}))
 	strip --remove-section=.comment --remove-section=.note \
 		${PKGDIR}/usr/sbin/gofish ${PKGDIR}/usr/bin/gmap2cache \
-		${PKGDIR}/usr/bin/mkcache ${PKGDIR}/usr/bin/webtest
+		${PKGDIR}/usr/bin/mkcache
 endif
 ## Fix permissions
 	find ${PKGDIR} -print0 2>/dev/null | xargs -0r chown \
@@ -74,7 +73,7 @@ endif
 	dpkg-shlibdeps -Tdebian/${PACKAGE}.substvars -dDepends \
 			${PKGDIR}/usr/sbin/gofish \
 			${PKGDIR}/usr/bin/gmap2cache \
-			${PKGDIR}/usr/bin/mkcache ${PKGDIR}/usr/bin/webtest
+			${PKGDIR}/usr/bin/mkcache
 ## Install stuff to DEBIAN/
 	install -d ${PKGDIR}/DEBIAN
 	install -m 0755 debian/maint/postinst debian/maint/postrm \
