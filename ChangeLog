@@ -1,0 +1,15 @@
+Changes for 0.9:
+
+    GoFish
+
+	* added configure support
+	* added portability
+	* added error reply for http requests
+	* changed default logfile from gopherd to gopherd.log
+	* added canned .gopher+ file for Gopher+ clients $ command
+	* added alpha support for gopher to http gateway
+
+    mkcache
+
+	* added directory listings sorting
+	* added -s # option for above
