@@ -1,7 +1,6 @@
 /*
- * gopherd.h - defines for the gofish gopher daemon
+ * gofish.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.14 $ $Date: 2002/10/21 00:31:45 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -27,21 +26,33 @@
 #include <poll.h>
 #endif
 #include <unistd.h>
+#include <time.h>
 #include <sys/uio.h>
 
 #define MAX_HOSTNAME	65
-#define MAX_LINE		1024
+#define MAX_LINE		1280
 #define MAX_REQUESTS	25
 #define MIN_REQUESTS	4
 #define GOPHER_BACKLOG	100 // helps when backed up
 
+/*
+ * Simplistic connection timeout mechanism.
+ * Every connection has a `last access time' associated with it. An
+ * access is a new connection, a read, or a write. When we have been
+ * idle for POLL_TIMEOUT seconds, we check all the connections. If a
+ * connection has been idle for more than MAX_IDLE_TIME, we close the
+ * connection.
+ */
+#define POLL_TIMEOUT	 10	// seconds
+#define MAX_IDLE_TIME	300	// seconds
+
+
 // If you leave GOPHER_HOST unset, it will default to your
 // your hostname.
-#define GOPHER_ROOT		"/var/lib/gopherd"
-#define GOPHER_LOGFILE	"/var/log/gopherd.log"
-#define GOPHER_PIDFILE	"/var/run/gopherd.pid"
-#define GOPHER_CONFIG	"/etc/gofish.conf"
-#define GOPHER_HOST		NULL
+#define GOPHER_LOGFILE	LOCALSTATEDIR "/log/gofish.log"
+#define GOPHER_PIDFILE	LOCALSTATEDIR "/run/gofish.pid"
+#define GOPHER_CONFIG	SYSCONFDIR "/gofish.conf"
+// #define GOPHER_HOST		""
 #define GOPHER_PORT		70
 
 // Supplied icons are this size
@@ -54,8 +65,18 @@
  */
 #define IGNORE_LOCAL	1
 
-#define GOPHER_UID		13
-#define GOPHER_GID		30
+#define GOPHER_USER		"gopher"
+#define GOPHER_UID		-1
+#define GOPHER_GID		-1
+
+
+/*
+ * Size of the mmap cache (i.e. max number of mmaps to cache).
+ * This number must be >= MAX_REQUESTS.
+ * Can be overridden with config file option.
+ * This only has meaning if MMAP_CACHE defined.
+ */
+#define MMAP_CACHE_SIZE	1000
 
 
 struct connection {
@@ -68,16 +89,22 @@ struct connection {
 	unsigned addr;
 	char *cmd;
 	off_t offset;
-	size_t len;
+	unsigned len;
 	unsigned char *buf;
+	unsigned mapped;
 	int   status;
 	struct iovec iovs[4];
 	int n_iovs;
+
+	time_t access;
 
 	// http stuff
 	int http;
 #define	HTTP_GET	1
 #define HTTP_HEAD	2
+	char *host;       // vhost only
+	char *user_agent; // combined log only
+	char *referer;    // combined log only
 	char *http_header;
 	char *html_header;
 	char *html_trailer;
@@ -88,7 +115,7 @@ struct connection {
 // exported from gopherd.c
 extern int verbose;
 
-extern void close_request(struct connection *conn, int status);
+void close_connection(struct connection *conn, int status);
 int checkpath(char *path);
 
 // exported from log.c
@@ -98,9 +125,10 @@ extern void log_close(void);
 extern void send_error(struct connection *conn, unsigned error);
 
 // exported from socket.c
-extern int listen_socket(int port);
-extern int accept_socket(int sock, unsigned *addr);
-extern char *ntoa(unsigned n); // helper
+int listen_socket(int port);
+int accept_socket(int sock, unsigned *addr);
+char *ntoa(unsigned n); // helper
+
 
 // exported from config.c
 extern char *config;
@@ -109,11 +137,14 @@ extern char *logfile;
 extern char *pidfile;
 extern char *hostname;
 extern int   port;
+extern char *user;
 extern uid_t uid;
 extern gid_t gid;
 extern int   ignore_local;
 extern int   icon_width;
 extern int   icon_height;
+extern int   virtual_hosts;
+extern int   combined_log;
 
 int read_config(char *fname);
 char *must_strdup(char *str);
@@ -123,10 +154,13 @@ int http_init(void);
 void http_cleanup(void);
 int http_get(struct connection *conn);
 int http_send_response(struct connection *conn);
+int http_error(struct connection *conn, int status);
 
 // exported from mime.c
-void init_mime(void);
-char *find_mime(char *fname);
+void mime_init(void);
+char *mime_find(char *fname);
+void mime_cleanup(void);
+
 
 // exported from mmap_cache.c
 void mmap_init(void);
