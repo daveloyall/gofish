@@ -1,0 +1,43 @@
+#! /bin/sh
+## /etc/init.d/gofish -- init script for gofish
+
+set -e
+
+GOFISH=/usr/sbin/gofish
+PIDFILE=/var/run/gofish.pid
+
+test -x ${GOFISH} || exit 0
+
+case $1 in
+	start)
+		echo -n "Starting gopherd: GoFish"
+		${GOFISH} -d
+		echo ".";;
+	stop)
+		echo -n "Stopping gopherd: "
+		if [ -e ${PIDFILE} ]; then
+			PID=$(cat ${PIDFILE})
+			if [ ! -z "${PID}" ]; then
+				if kill -9 ${PID} >/dev/null 2>&1; then
+					echo -n "GoFish"
+				else
+					echo -n "not running"
+				fi
+			else
+				echo -n "not running"
+			fi
+		else
+			echo -n "not running"
+		fi
+		rm -f ${PIDFILE}
+		echo ".";;
+	restart|force-reload)
+		$0 stop
+		sleep 2
+		$0 start;;
+	*)
+		echo "Usage: /etc/init.d/gofish {start|stop|restart|force-reload}"
+		exit 1;;
+esac
+
+exit 0

@@ -1,0 +1,136 @@
+#! /bin/sh -e
+## 01-paths.dpatch by Gergely Nagy <algernon@bonehunter.rulez.org>
+##
+## All lines beginning with `## DP:' are a description of the patch.
+## DP: Adjust paths for Debian
+
+if [ $# -ne 1 ]; then
+    echo >&2 "`basename $0`: script expects -patch|-unpatch as argument"
+    exit 1
+fi
+case "$1" in
+    -patch) patch -f --no-backup-if-mismatch -p0 < $0;;
+    -unpatch) patch -f --no-backup-if-mismatch -R -p0 < $0;;
+    *)
+	echo >&2 "`basename $0`: script expects -patch|-unpatch as argument"
+	exit 1;;
+esac
+
+exit 0
+
+Index: gofish-www.conf
+===================================================================
+RCS file: /cvsroot/Debian/gofish/gofish-www.conf,v
+retrieving revision 1.1.1.1
+diff -u -r1.1.1.1 gofish-www.conf
+--- gofish-www.conf	14 Nov 2002 12:21:40 -0000	1.1.1.1
++++ gofish-www.conf	14 Nov 2002 13:01:16 -0000
+@@ -4,13 +4,13 @@
+ # editing a line.
+ 
+ # The root directory for the web site(s)
+-root = /home/httpd
++root = /var/www
+ 
+ # The logfile
+-logfile = /var/log/gofish.log
++logfile = /var/log/gofish-www.log
+ 
+ # The pidfile (used when starting/stopping the server)
+-pidfile = /var/run/gofish.pid
++pidfile = /var/run/gofish-www.pid
+ 
+ # The Apache stype mime.types file
+ ;mimefile = /etc/mime.types
+@@ -22,8 +22,8 @@
+ ;port = 80
+ 
+ # The gopher user/group id
+-;uid = 13
+-;gid = 30
++;uid = 33
++;gid = 33
+ 
+ # If set to 1 GoFish will support virtual hosts
+ ;virtual_hosts = 0
+@@ -35,4 +35,4 @@
+ 
+ # Set to 1 if you do not want to log local traffic.
+ # Local traffic is defined as 192.168.x.x or 127.0.0.1
+-;no_local = 1
++;no_local = 0
+Index: gofish.conf
+===================================================================
+RCS file: /cvsroot/Debian/gofish/gofish.conf,v
+retrieving revision 1.1.1.1
+diff -u -r1.1.1.1 gofish.conf
+--- gofish.conf	14 Nov 2002 12:21:40 -0000	1.1.1.1
++++ gofish.conf	14 Nov 2002 13:00:15 -0000
+@@ -4,13 +4,13 @@
+ # editing a line.
+ 
+ # The root directory for the gopherspace
+-;root = /var/lib/gopherd
++;root = /var/gopher
+ 
+ # The logfile
+-;logfile = /var/log/gopherd.log
++;logfile = /var/log/gofish.log
+ 
+ # The pidfile (used when starting/stopping the server)
+-;pidfile = /var/run/gopherd.pid
++;pidfile = /var/run/gofish.pid
+ 
+ # The Apache stype mime.types file
+ ;mimefile = /etc/mime.types
+@@ -22,8 +22,8 @@
+ ;port = 70
+ 
+ # The gopher user/group id
+-;uid = 13
+-;gid = 30
++;uid = 65534
++;gid = 65534
+ 
+ # If set to 1 GoFish will support virtual hosts
+ ;virtual_hosts = 0
+@@ -35,4 +35,4 @@
+ 
+ # Set to 1 if you do not want to log local traffic.
+ # Local traffic is defined as 192.168.x.x or 127.0.0.1
+-;no_local = 1
++;no_local = 0
+Index: gofish.h
+===================================================================
+RCS file: /cvsroot/Debian/gofish/gofish.h,v
+retrieving revision 1.1.1.1
+diff -u -r1.1.1.1 gofish.h
+--- gofish.h	14 Nov 2002 12:21:41 -0000	1.1.1.1
++++ gofish.h	14 Nov 2002 12:59:42 -0000
+@@ -37,9 +37,9 @@
+ 
+ // If you leave GOPHER_HOST unset, it will default to your
+ // your hostname.
+-#define GOPHER_ROOT		"/var/lib/gopherd"
+-#define GOPHER_LOGFILE	"/var/log/gopherd.log"
+-#define GOPHER_PIDFILE	"/var/run/gopherd.pid"
++#define GOPHER_ROOT		"/var/gopher"
++#define GOPHER_LOGFILE	"/var/log/gofish.log"
++#define GOPHER_PIDFILE	"/var/run/gofish.pid"
+ #define GOPHER_CONFIG	"/etc/gofish.conf"
+ // #define GOPHER_HOST		""
+ #define GOPHER_PORT		70
+@@ -52,10 +52,10 @@
+ /* Set to 1 to not log the local network (192.168.x.x).
+  * Set to 0 to log everything. Do not undefine.
+  */
+-#define IGNORE_LOCAL	1
++#define IGNORE_LOCAL	0
+ 
+-#define GOPHER_UID		13
+-#define GOPHER_GID		30
++#define GOPHER_UID		65534
++#define GOPHER_GID		65534
+ 
+ 
+ /*
