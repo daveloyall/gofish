@@ -44,10 +44,13 @@ static char *server_str;
 static char *mime_html = "text/html; charset=iso-8859-1";
 
 
-#define HTML_HEADER	"<html><body><center><table width=\"80%\"><tr><td><pre>\n"
+#define HTML_HEADER	"<html><body><center><table><tr><td><pre>\n"
 
-#define HTML_TRAILER "</pre></table></center></body>\n"
-
+#define HTML_TRAILER "</pre>\n<tr><td><hr>\n<tr><td><small>" \
+				  	 "<a href=\"http://gofish.sourceforge.net/\">" \
+			         "GoFish " GOFISH_VERSION \
+			  	     "</a> gopher to http gateway.</small>\n" \
+                     "</table></center></body>\n"
 #define HTML_INDEX_FILE	"index.html"
 #define HTML_INDEX_TYPE	mime_html
 
@@ -232,26 +235,11 @@ static int http_build_response(struct connection *conn, char *type)
 }
 
 
-static void out_external(int out, char *host, char *port, char type, char *url)
-{
-	++url;
-	write_str(out, host);
-	write_str(out, ":");
-	write_str(out, port);
-	write_str(out, "/");
-	if(type == '1' && (strcmp(url, "/") == 0 || !*url)) {
-	} else {
-		write_out(out, &type, 1);
-		write_str(out, url);
-	}
-}
-
-
 static int http_dir_line(int out, char *line)
 {
 	char *desc, *url, *host, *port;
 	char *p, *icon;
-	char buf[100];
+	char buf[200];
 
 	for(desc = p = line + 1; *p && *p != '\t'; ++p) ;
 	*p++ = '\0';
@@ -286,17 +274,29 @@ static int http_dir_line(int out, char *line)
 		write_str(out, buf);
 
 		if(strcmp(host, hostname) && strcmp(host, "localhost")) {
+			if(strcmp(port, "70") == 0)
+				sprintf(buf, "gopher://%.40s/", host);
+			else
+				sprintf(buf, "gopher://%.40s:%s/", host, port);
+			if(*line == '1' && (strcmp(url, "/") == 0 || !*url)) {
+			} else {
+				p = buf + strlen(buf);
+				sprintf(p, "%c%.80s", *line, url);
+			}
 			write_str(out, desc);
-			write_str(out, " <a href=\"gopher://");
-			out_external(out, host, port, *line, url);
-			write_str(out, "\">[gopher]</a>\n");
-			write_str(out, " <a href=\"http://");
-			out_external(out, host, port, *line, url);
-			write_str(out, "\">[http]</a>\n");
+			write_str(out, " <a href=\"");
+			write_str(out, buf);
+			write_str(out, "\">");
+			write_str(out, buf);
+			write_str(out, "</a>\n");
 		} else {
 			write_str(out, "<a href=\"/");
+#ifdef STRICT_GOPHER
 			write_out(out, line, 1);
 			write_str(out, url + 1);
+#else
+			write_str(out, url + 2);
+#endif
 			write_str(out, "\">");
 			write_str(out, desc);
 			write_str(out, "</a>\n");
@@ -314,6 +314,7 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 {
 	int out;
 	char buffer[BUFSIZE + 1], outname[20];
+	char url[256];
 	char *buf, *p, *s;
 	int n, len, left;
 
@@ -328,7 +329,11 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 		return -1;
 	}
 
-	if(*dir == '\0' || strcmp(dir, "/") == 0) dir = "[Root]";
+	if(*dir == '/') ++dir;
+	if(strncmp(dir, "1/", 2) == 0) dir += 2;
+	sprintf(url, "http://%.80s:%d/%.80s", hostname, port, dir);
+	p = url + strlen(url);
+	if(*(p - 1) != '/') strcpy(p, "/");
 
 	// The table inside a table works better for Opera
 	sprintf(buffer,
@@ -337,10 +342,10 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 			"<html>\n<head><title>%.80s</title></head>\n"
 			"<body bgcolor=white>\n\n"
 			"<table border=0 width=\"80%%\" align=center>\n"
-			"<tr><td><h1>%.80s</h1>\n"
+			"<tr><td><h1>Index of %s</h1>\n"
 			"<tr><td><hr>\n"
 			"<tr><td>\n <table border=0>\n",
-			dir, dir);
+			url, url);
 	write_str(out, buffer);
 
 
@@ -397,7 +402,7 @@ struct mark {
 int http_get(struct connection *conn)
 {
 	char *e;
-	int fd;
+	int fd, new;
 	char *mime, type;
 	struct mark save;
 	char *request = conn->cmd;
@@ -420,13 +425,18 @@ int http_get(struct connection *conn)
 
 	unquote(request);
 
-	if((fd = smart_open(request, &type)) >= 0) {
+	if(combined_log) {
+		// Save these up front for logging
+		conn->referer = strstr(e, "Referer:");
+		conn->user_agent = strstr(e, "User-Agent:");
+	}
+
+	if(is_gopher && (fd = smart_open(request, &type)) >= 0) {
 		// valid gopher request
 		if(verbose) printf("HTTP Gopher request '%s'\n", request);
 		switch(type) {
 		case '1':
-		{
-			int new = http_directory(conn, fd, request);
+			new = http_directory(conn, fd, request);
 			close(fd);
 			fd = new;
 			if(fd < 0) {
@@ -435,7 +445,6 @@ int http_get(struct connection *conn)
 			}
 			mime = mime_html;
 			break;
-		}
 		case '0':
 			// htmlize it
 			conn->html_header  = HTML_HEADER;
@@ -458,14 +467,13 @@ int http_get(struct connection *conn)
 			syslog(LOG_WARNING, "Bad file type %c", type);
 			break;
 		}
+	} else if(is_gopher) {
+		if(verbose) printf("HTTP Gopher invalid '%s'\n", request);
+		syslog(LOG_WARNING, "%s: %m", request);
+		MRESTORE(&save);
+		return http_error(conn, 404);
 	} else {
-		// real http request or bad gateway request
-		if(combined_log) {
-			// Save these up front for logging
-			conn->referer = strstr(e, "Referer:");
-			conn->user_agent = strstr(e, "User-Agent:");
-		}
-
+		// real http request
 		if(virtual_hosts) {
 			char *host;
 			int rc;

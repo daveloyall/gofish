@@ -111,6 +111,9 @@ void log_hit(struct connection *conn, unsigned status)
 		while(isspace((int)*request)) ++request;
 		if(*request == '/') ++request;
 
+		// For gopher requests
+		if(*request && *(request + 1) == '/') request += 2;
+
 		if(combined_log) {
 			char *referer, *agent;
 
@@ -173,11 +176,14 @@ void log_hit(struct connection *conn, unsigned status)
 			}
 		}
 	} else {
-		char *name = conn->cmd ? (*conn->cmd ? conn->cmd : "/") : "[Empty]";
+		char *name = conn->cmd ? conn->cmd : "[Empty]";
+
+		if(*name == '/') ++name;
+		if(*name && *(name + 1) == '/') name += 2;
 
 		// This is 400 chars max
 	gopher_again:
-		n = fprintf(log_fp, "%s %.300s\" %u %u\n", common, name, status, conn->len);
+		n = fprintf(log_fp, "%s /%.300s\" %u %u\n", common, name, status, conn->len);
 		if(n < 0 && errno == EINTR) {
 			printf("EINTR\n"); // SAM
 			goto gopher_again;

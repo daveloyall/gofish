@@ -46,7 +46,7 @@ int   icon_width    = ICON_WIDTH;
 int   icon_height   = ICON_HEIGHT;
 int   virtual_hosts = 0;
 int   combined_log  = 0;
-int   is_http       = 0;
+int   is_gopher     = 1;
 
 
 extern void set_mime_file(char *fname);
@@ -142,7 +142,11 @@ int read_config(char *fname)
 				must_strtol(p, &virtual_hosts);
 			else if(strcmp(line, "combined-log") == 0)
 				must_strtol(p, &combined_log);
-			else if(strcmp(line, "mmap-cache-size") == 0) {
+			else if(strcmp(line, "is-http") == 0) {
+				int is_http = -1;
+				must_strtol(p, &is_http);
+				if(is_http != -1) is_gopher = !is_http;
+			} else if(strcmp(line, "mmap-cache-size") == 0) {
 #ifdef MMAP_CACHE
 				extern int mmap_cache_size;
 				must_strtol(p, &mmap_cache_size);

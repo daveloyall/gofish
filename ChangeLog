@@ -1,3 +1,13 @@
+Changes for 0.26
+
+    GoFish
+
+	* added config option is-http
+	* allow looser links
+	* extern gateway links do not assume http available
+	* changed http gateway dir headings
+	* cleaned up the logs somewhat
+
 Changes for 0.25
 
     GoFish

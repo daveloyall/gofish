@@ -3,7 +3,7 @@
 TMP=$HOME/work/gofish
 
 VERSION=`fgrep Version: gofish.spec | cut -d' ' -f2`
-RELEASE=3
+RELEASE=1
 
 ARCH=`uname -m`
 case $ARCH in i*86) ARCH=i386;; esac

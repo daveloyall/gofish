@@ -1,6 +1,6 @@
 Summary: A Gopher Server
 Name: gofish
-Version: 0.25
+Version: 0.26
 Release: 1
 Copyright: GPL
 Group: Networking/Daemons
@@ -58,7 +58,6 @@ rm -rf $RPM_BUILD_ROOT
 /usr/bin/mkcache
 /usr/bin/gmap2cache
 /usr/bin/check-files
-/usr/bin/webtest
 /etc/rc.d/init.d/gopherd
 /etc/rc.d/init.d/gofish
 /usr/man/man1/*
@@ -68,12 +67,17 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 /etc/gofish.conf
 /etc/gofish-www.conf
-/var/lib/gopherd/icons/*
-/var/lib/gopherd/.gopher+
-/var/lib/gopherd/.cache
-/var/lib/gopherd/Configure_GoFish
+/var/gopher/icons/*
+/var/gopher/.gopher+
+/var/gopher/.cache
+/var/gopher/Configure_GoFish
 
 %changelog
+* Sun Dec  8 2002 Sean MacLennan <seanm@seanm.ca>
+- Updated to 0.25
+- /var/lib/gopherd -> /var/gopher
+- webtest now part of make check
+
 * Sat Nov  9 2002 Sean MacLennan <seanm@seanm.ca>
 - Updated to 0.21
 - Added webtest

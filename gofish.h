@@ -144,6 +144,7 @@ extern int   icon_width;
 extern int   icon_height;
 extern int   virtual_hosts;
 extern int   combined_log;
+extern int   is_gopher;
 
 int read_config(char *fname);
 char *must_strdup(char *str);

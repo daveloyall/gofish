@@ -93,7 +93,7 @@ should be up to date.
 
 Example: (note that kill line uses backwards ticks, not single quotes)
 
-	mv /var/lib/gopherd.log /var/lib/gopherd.log.1
+	mv /var/log/gopherd.log /var/log/gopherd.log.1
 	kill -USR1 `cat /var/run/gopherd.pid`
 
 

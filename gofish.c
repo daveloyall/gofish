@@ -33,6 +33,7 @@
 #include <sys/time.h>
 #include <pwd.h>
 #include <grp.h>
+#include <sys/stat.h>
 
 #include "gofish.h"
 #include "version.h"
@@ -448,56 +449,100 @@ int checkpath(char *path)
 // This handles parsing the name and opening the file
 // We allow the following /?<selector>/<path> || nothing
 // Returns the selector type in `selector'
-int smart_open(char *name, char *selector)
+int smart_open(char *name, char *type)
 {
-	char type;
+	FILE *fp;
+	int fd;
+	struct stat sbuf;
+	char dirname[MAX_LINE + 10], *p, *e;
 
 	if(*name == '/') ++name;
 
-	// This is worth opimizing
+	// This is worth optimizing
 	if(*name == '\0') {
-		*selector = '1';
+		*type = '1';
 		return open(".cache", O_RDONLY);
 	}
 
-	type = *name++;
-	if(*name == '/')
-		++name;
-	else {
-		errno = EINVAL;
+	// Fast path - type specified
+	if(*(name + 1) == '/') {
+		*type = *name;
+		name += 2;
+
+		switch(*type) {
+		case '0':
+		case '4':
+		case '5':
+		case '6':
+		case '9':
+		case 'g':
+		case 'h':
+		case 'I':
+			return open(name, O_RDONLY);
+		case '1':
+			strcpy(dirname, name);
+			p = dirname + strlen(dirname);
+			if(*(p - 1) != '/') *p++ = '/';
+			strcpy(p, ".cache");
+			return open(dirname, O_RDONLY);
+		default:
+			errno = EINVAL;
+			return -1;
+		}
+	}
+
+#ifndef STRICT_GOPHER
+	// Regular path
+	if((fd = open(name, O_RDONLY)) < 0) return -1;
+
+	if(fstat(fd, &sbuf)) {
+		close(fd);
 		return -1;
 	}
 
-#ifdef ALLOW_NON_ROOT
-	if(checkpath(name)) return -1;
-#endif
+	strcpy(dirname, name);
 
-	*selector = type;
+	if(S_ISDIR(sbuf.st_mode)) {
+		*type = '1';
+		close(fd);
 
-	switch(type) {
-	case '0':
-	case '4':
-	case '5':
-	case '6':
-	case '9':
-	case 'g':
-	case 'h':
-	case 'I':
-		return open(name, O_RDONLY);
-	case '1':
-	{
-		char dirname[MAX_LINE + 10], *p;
-
-		strcpy(dirname, name);
 		p = dirname + strlen(dirname);
 		if(*(p - 1) != '/') *p++ = '/';
 		strcpy(p, ".cache");
 		return open(dirname, O_RDONLY);
 	}
-	default:
-		errno = EINVAL;
+
+	if((p = strrchr(dirname, '/')))
+		strcpy(p + 1, ".cache");
+	else
+		strcpy(dirname, ".cache");
+
+
+	if((fp = fopen(dirname, "r")) == NULL) {
+		close(fd);
 		return -1;
 	}
+
+	while(fgets(dirname, sizeof(dirname), fp)) {
+		if((p = strchr(dirname, '\t'))) {
+			p += 3;
+			if((e = strchr(p, '\t'))) {
+				*e = '\0';
+				if(strcmp(name, p) == 0) {
+					fclose(fp);
+					*type = *dirname;
+					return fd;
+				}
+			}
+		}
+	}
+
+	fclose(fp);
+	close(fd);
+#endif
+
+	errno = EINVAL;
+	return -1;
 }
 
 
@@ -578,6 +623,8 @@ void close_connection(struct connection *conn, int status)
 
 	conn->http = 0;
 	conn->host = NULL;
+	conn->referer = NULL;
+	conn->user_agent = NULL;
 
 	conn->status = 200;
 
@@ -639,7 +686,7 @@ int read_request(struct connection *conn)
 {
 	int fd;
 	int n;
-	char *p, selector;
+	char *p, type;
 
 	do
 		n = read(SOCKET(conn), conn->cmd + conn->offset, MAX_LINE - conn->offset);
@@ -717,7 +764,7 @@ int read_request(struct connection *conn)
 			*p = '\0';
 	}
 
-	if((fd = smart_open(conn->cmd, &selector)) < 0) {
+	if((fd = smart_open(conn->cmd, &type)) < 0) {
 		close_connection(conn, 404);
 		return 1;
 	}
@@ -738,7 +785,7 @@ int read_request(struct connection *conn)
 	conn->iovs[0].iov_base = conn->buf;
 	conn->iovs[0].iov_len  = conn->len;
 
-	if(selector == '0') {
+	if(type == '0') {
 		if(conn->len > 0 && conn->buf[conn->len - 1] != '\n') {
 			conn->iovs[1].iov_base = "\r\n.\r\n";
 			conn->iovs[1].iov_len  = 5;

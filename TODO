@@ -1,6 +1,8 @@
 TODO
 ----
 
+- /new and /new/ as different entries
+
 - more configuration
   - http error msgs
   - html header/footer
@@ -25,6 +27,8 @@ DOCUMENTATION
 -------------
 
 - doc combined versus common
+
+- doc fast vs simple urls
 
 - doc http
 

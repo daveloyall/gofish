@@ -1,6 +1,6 @@
 #!/bin/sh
 
-cd /var/lib/gopherd
+cd /var/gopher
 
 for cache in `find . -name .cache`; do
   for f in `grep -v "^[19].*$" $cache | cut -f2 | cut -c3-`; do

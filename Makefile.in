@@ -617,7 +617,7 @@ install-data-local: install-root-dir
 	  $(INSTALL_DATA) gofish-www.conf $(DESTDIR)$(sysconfdir)/gofish-www.conf; \
 	fi
 
-# 1. Only install Configure_GoFish if /var/lib/gopherd does not exist.
+# 1. Only install Configure_GoFish if /var/gopher does not exist.
 #    We don't want to keep installing it for users who are upgrading.
 # 2. Only install the .gopher+ file if it dosen't exist. We don't want to
 #    override any user changes.
