@@ -44,6 +44,8 @@ int read_dir(char *path, int level);
 #define CACHE		"/.cache"
 
 
+char portstr[11];
+
 int main(int argc, char *argv[])
 {
 	char *dir = NULL;
@@ -63,6 +65,8 @@ int main(int argc, char *argv[])
 		}
 
 	read_config(config);
+
+	sprintf(portstr, "%d", port);
 
 	if(!realpath(root_dir, full)) {
 		perror(root_dir);
@@ -179,9 +183,13 @@ int process_file(char *dir, int level)
 
 		if(*buf == '\0') continue; // empty
 
-		if(!*field[3]) field[3] = "70";
+		if(!*field[3]) field[3] = portstr;
 		if(!*field[2]) field[2] = hostname;
-		if(!*field[1]) field[1] = field[0];
+		if(!*field[1])
+			if(*field[0] == 'i')
+				field[1] = "/fake";
+			else
+				field[1] = field[0];
 
 		if(*(field[1] + 1) != '/') {
 			if(level == 0)

@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.6 $ $Date: 2002/09/01 00:50:53 $
+ * $Revision: 1.7 $ $Date: 2002/09/22 17:54:24 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -602,6 +602,7 @@ int read_request(struct connection *conn)
 
 	memset(conn->iovs, 0, sizeof(conn->iovs));
 
+#ifdef USE_HTTP
 	if(conn->http_header) {
 		conn->iovs[0].iov_base = conn->http_header;
 		conn->iovs[0].iov_len  = strlen(conn->http_header);
@@ -611,15 +612,19 @@ int read_request(struct connection *conn)
 		conn->iovs[1].iov_base = conn->html_header;
 		conn->iovs[1].iov_len  = strlen(conn->html_header);
 	}
+#endif
 
 	conn->iovs[2].iov_base = conn->buf;
 	conn->iovs[2].iov_len  = conn->len;
 
+#ifdef USE_HTTP
 	if(conn->html_trailer) {
 		conn->iovs[3].iov_base = conn->html_trailer;
 		conn->iovs[3].iov_len  = strlen(conn->html_trailer);
 	}
-	else if(*conn->cmd != '9') {
+	else
+#endif
+		if(*conn->cmd != '9') {
 		// SAM does not handle neednl
 		conn->iovs[3].iov_base = ".\r\n";
 		conn->iovs[3].iov_len  = 3;

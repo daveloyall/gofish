@@ -43,7 +43,7 @@ GoFish is hosted on SourceForge. Go to the project page
 CURRENT ASSUMPTIONS
 -------------------
 
-I am currently using the Linux sendfile(2) call to write out the
+I am currently using the Linux mmap(2) call to write out the
 files. Because of this, I do not process the files. The following
 assumption must hold:
 
@@ -57,15 +57,23 @@ the check-files script also.
 HOW TO BUILD IT
 ---------------
 
-If you are using the RPMS, you don't have to build it! If you are
-using the source RPMS, build it like you would any source RPM. For the
-tarball, read on.
+From RPMs
+---------
+
+If you are using the RPMS, you don't have to build it! Just install
+the gofish rpm. If this is a first time install, backup anything in
+your gopher root directory and install the gofish-setup rpm.
+
+From tarball
+------------
 
   1) Untar the tarball. You should get a gofish-<version> directory.
   2) cd gofish-<version>
   3) ./configure
           or
-     ./configure --enable-http
+     ./configure --disable-http
+          or for a redhat style install
+     ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
   4) make
   5) su root
   6) make install

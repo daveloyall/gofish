@@ -75,7 +75,6 @@ man_MANS = gofish.1 gofish.5 dotcache.5 gopherd.1 mkcache.1 gmap2cache.1
 
 rootdir = $(localstatedir)/lib/gopherd
 icondir = $(rootdir)/icons
-root_DATA = .gopher+
 
 # Extra helper programs
 
@@ -117,8 +116,6 @@ man5dir = $(mandir)/man5
 MANS = $(man_MANS)
 
 NROFF = nroff
-DATA =  $(root_DATA)
-
 DIST_COMMON =  README ./stamp-h.in AUTHORS COPYING ChangeLog INSTALL \
 Makefile.am Makefile.in NEWS acconfig.h aclocal.m4 config.h.in \
 configure configure.in install-sh missing mkinstalldirs
@@ -348,25 +345,6 @@ uninstall-man:
 	@$(NORMAL_UNINSTALL)
 	$(MAKE) $(AM_MAKEFLAGS) uninstall-man1 uninstall-man5
 
-install-rootDATA: $(root_DATA)
-	@$(NORMAL_INSTALL)
-	$(mkinstalldirs) $(DESTDIR)$(rootdir)
-	@list='$(root_DATA)'; for p in $$list; do \
-	  if test -f $(srcdir)/$$p; then \
-	    echo " $(INSTALL_DATA) $(srcdir)/$$p $(DESTDIR)$(rootdir)/$$p"; \
-	    $(INSTALL_DATA) $(srcdir)/$$p $(DESTDIR)$(rootdir)/$$p; \
-	  else if test -f $$p; then \
-	    echo " $(INSTALL_DATA) $$p $(DESTDIR)$(rootdir)/$$p"; \
-	    $(INSTALL_DATA) $$p $(DESTDIR)$(rootdir)/$$p; \
-	  fi; fi; \
-	done
-
-uninstall-rootDATA:
-	@$(NORMAL_UNINSTALL)
-	list='$(root_DATA)'; for p in $$list; do \
-	  rm -f $(DESTDIR)$(rootdir)/$$p; \
-	done
-
 tags: TAGS
 
 ID: $(HEADERS) $(SOURCES) $(LISP)
@@ -496,24 +474,23 @@ install-exec-am: install-binPROGRAMS install-sbinPROGRAMS \
 		install-binSCRIPTS
 install-exec: install-exec-am
 
-install-data-am: install-man install-rootDATA install-data-local
+install-data-am: install-man install-data-local
 install-data: install-data-am
 
 install-am: all-am
 	@$(MAKE) $(AM_MAKEFLAGS) install-exec-am install-data-am
 install: install-am
 uninstall-am: uninstall-binPROGRAMS uninstall-sbinPROGRAMS \
-		uninstall-binSCRIPTS uninstall-man uninstall-rootDATA \
-		uninstall-local
+		uninstall-binSCRIPTS uninstall-man uninstall-local
 uninstall: uninstall-am
-all-am: Makefile $(PROGRAMS) $(SCRIPTS) $(MANS) $(DATA) config.h
+all-am: Makefile $(PROGRAMS) $(SCRIPTS) $(MANS) config.h
 all-redirect: all-am
 install-strip:
 	$(MAKE) $(AM_MAKEFLAGS) AM_INSTALL_PROGRAM_FLAGS=-s install
 installdirs:
 	$(mkinstalldirs)  $(DESTDIR)$(bindir) $(DESTDIR)$(sbindir) \
 		$(DESTDIR)$(bindir) $(DESTDIR)$(mandir)/man1 \
-		$(DESTDIR)$(mandir)/man5 $(DESTDIR)$(rootdir)
+		$(DESTDIR)$(mandir)/man5
 
 
 mostlyclean-generic:
@@ -561,11 +538,11 @@ maintainer-clean-sbinPROGRAMS uninstall-sbinPROGRAMS \
 install-sbinPROGRAMS mostlyclean-compile distclean-compile \
 clean-compile maintainer-clean-compile uninstall-binSCRIPTS \
 install-binSCRIPTS install-man1 uninstall-man1 install-man5 \
-uninstall-man5 install-man uninstall-man uninstall-rootDATA \
-install-rootDATA tags mostlyclean-tags distclean-tags clean-tags \
-maintainer-clean-tags distdir mostlyclean-depend distclean-depend \
-clean-depend maintainer-clean-depend info-am info dvi-am dvi check \
-check-am installcheck-am installcheck all-recursive-am install-exec-am \
+uninstall-man5 install-man uninstall-man tags mostlyclean-tags \
+distclean-tags clean-tags maintainer-clean-tags distdir \
+mostlyclean-depend distclean-depend clean-depend \
+maintainer-clean-depend info-am info dvi-am dvi check check-am \
+installcheck-am installcheck all-recursive-am install-exec-am \
 install-exec install-data-local install-data-am install-data install-am \
 install uninstall-local uninstall-am uninstall all-redirect all-am all \
 installdirs mostlyclean-generic distclean-generic clean-generic \
@@ -573,26 +550,38 @@ maintainer-clean-generic clean mostlyclean distclean maintainer-clean
 
 
 # Do not override the gofish.conf or icons directories if they exist
-install-data-local:
+install-data-local: install-root-dir
 	$(mkinstalldirs) $(DESTDIR)$(sysconfdir)
 	if test -f $(DESTDIR)$(sysconfdir)/gofish.conf; then \
 	  $(INSTALL_DATA) gofish.conf $(DESTDIR)$(sysconfdir)/gofish.conf.new; \
 	else \
 	  $(INSTALL_DATA) gofish.conf $(DESTDIR)$(sysconfdir)/gofish.conf; \
 	fi
+
+# 1. Only install Configure_GoFish if /var/lib/gopherd does not exist.
+#    We don't want to keep installing it for users who are upgrading.
+# 2. Only install the .gopher+ file if it dosen't exist. We don't want to
+#    override any user changes.
+# 3. Only install icon directory if it dosen't exist. We don't want to
+#    override any user installed icons.
+install-root-dir:
+	if test ! -d $(DESTDIR)$(rootdir); then \
+	  $(mkinstalldirs) $(DESTDIR)$(rootdir); \
+	  $(INSTALL_DATA) Configure_GoFish $(DESTDIR)$(rootdir)/Configure_GoFish; \
+	  $(INSTALL_DATA) _cache $(DESTDIR)$(rootdir)/.cache; \
+	fi
+	if test ! -f $(DESTDIR)$(rootdir)/.gopher+; then \
+	  $(INSTALL_DATA) _gopher+ $(DESTDIR)$(rootdir)/.gopher+; \
+	fi
 	if test ! -f $(DESTDIR)$(icondir); then \
-		$(mkinstalldirs) $(DESTDIR)$(icondir); \
-		$(INSTALL_DATA) $(srcdir)/icons/*.gif $(DESTDIR)$(icondir); \
+	  $(mkinstalldirs) $(DESTDIR)$(icondir); \
+	  $(INSTALL_DATA) $(srcdir)/icons/*.gif $(DESTDIR)$(icondir); \
 	fi
 
+# Do not remove the root_dir or any part of it
 uninstall-local:
 	rm -f  $(DESTDIR)$(sysconfdir)/gofish.conf
 	rm -f  $(DESTDIR)$(sysconfdir)/gofish.conf.new
-	rm -rf $(DESTDIR)$(icondir)
-	rmdir  $(DESTDIR)$(rootdir)
-
-.gopher+: _gopher+
-	cp _gopher+ .gopher+
 
 # Create version.h from gofish.spec
 # Don't use BUILT_SOURCES

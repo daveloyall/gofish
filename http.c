@@ -333,6 +333,8 @@ int http_get(struct connection *conn)
 	char *mime, type1;
 	char *request = conn->cmd;
 
+	conn->http = 1;
+
 	request += 4;
 	while(isspace(*request)) ++request;
 
@@ -476,7 +478,7 @@ int http_get(struct connection *conn)
 	strcpy(error, "HTTP/1.1 501 Not Implemented\r\n\r\n"
 		   "Sorry!\r\n\r\n"
 		   "This is a gopher server, not a web server.\r\n");
-	write(sock, error, strlen(error));
+	write(SOCKET(conn), error, strlen(error));
 
 	return -1;
 }

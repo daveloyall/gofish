@@ -1,10 +1,10 @@
 Summary: A Gopher Server
 Name: gofish
-Version: 0.11
+Version: 0.12
 Release: 1
 Copyright: GPL
 Group: Networking/Daemons
-Source:gopher://seanm.ca/9/winder/gofish-%{version}.tar.gz
+Source: gopher://seanm.ca/9/gofish/gofish-%{version}.tar.gz
 BuildRoot: /var/tmp/%{name}-buildroot
 Conflicts: gopher, gopherd
 
@@ -19,6 +19,16 @@ only serve files from the root directory or below. While GoFish must
 run at root privilege to be able to use port 70, it drops to a normal
 user while accessing files.
 
+%package setup
+Summary: Initial files for GoFish
+Group: Networking/Daemons
+Copyright: GPL
+
+%description setup
+This package contains the files needed to get GoFish up and running.
+Only install this package the first time you install GoFish since it
+overwrites files in the gopher root directory.
+
 %prep
 %setup
 ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
@@ -31,7 +41,7 @@ rm -rf $RPM_BUILD_ROOT
 
 make DESTDIR=$RPM_BUILD_ROOT install
 
-# This is not install by make install
+# This is not installed by make install
 mkdir -p $RPM_BUILD_ROOT/etc/rc.d/init.d
 install init-gofish $RPM_BUILD_ROOT/etc/rc.d/init.d/gopherd
 
@@ -45,14 +55,25 @@ rm -rf $RPM_BUILD_ROOT
 /usr/sbin/gopherd
 /usr/bin/mkcache
 /usr/bin/check-files
-/etc/gofish.conf
 /etc/rc.d/init.d/gopherd
 /usr/man/man1/*
 /usr/man/man5/*
+
+%files setup
+%defattr(-,root,root)
+/etc/gofish.conf
 /var/lib/gopherd/icons/*
 /var/lib/gopherd/.gopher+
+/var/lib/gopherd/.cache
+/var/lib/gopherd/Configure_GoFish
 
 %changelog
+* Sun Sep 22 2002 Sean MacLennan <seanm@seanm.ca>
+- Updated to 0.11
+- Split into two rpms
+- Log fix
+- No longer using sendfile
+
 * Sat Aug 24 2002 Sean MacLennan <seanm@seanm.ca>
 - Updated to 0.9
 - Now using configure

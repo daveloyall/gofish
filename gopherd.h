@@ -1,7 +1,7 @@
 /*
  * gopherd.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.6 $ $Date: 2002/09/01 00:50:53 $
+ * $Revision: 1.7 $ $Date: 2002/09/22 17:54:24 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -72,6 +72,7 @@ struct connection {
 	int   status;
 	struct iovec iovs[4];
 #if defined(USE_HTTP)
+	int http;
 	char *http_header;
 	char *html_header;
 	char *html_trailer;
