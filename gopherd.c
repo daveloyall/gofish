@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.7 $ $Date: 2002/09/22 17:54:24 $
+ * $Revision: 1.8 $ $Date: 2002/09/27 03:16:50 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -241,13 +241,26 @@ void start_polling(int csock)
 			if(ufds[i].revents & POLLIN) {
 				read_request(&conns[i]);
 				--n;
-			}
-			else if(ufds[i].revents & POLLOUT) {
+			} else if(ufds[i].revents & POLLOUT) {
 				write_request(&conns[i]);
 				--n;
 			}
 			else if(ufds[i].revents) {
-				syslog(LOG_DEBUG, "Revents = %d", ufds[i].revents);
+				// Error
+				int status;
+
+				if(ufds[i].revents & POLLHUP) {
+					syslog(LOG_DEBUG, "Connection hung up");
+					status = 504;
+				} else if(ufds[i].revents & POLLNVAL) {
+					syslog(LOG_DEBUG, "Connection invalid");
+					status = 410;
+				} else {
+					syslog(LOG_DEBUG, "Revents = 0x%x", ufds[i].revents);
+					status = 501;
+				}
+
+				close_request(&conns[i], status);
 				--n;
 			}
 
@@ -564,10 +577,14 @@ int read_request(struct connection *conn)
 
 	if(verbose > 2) printf("Request '%s'\n", conn->cmd);
 
-	// For gopher+ clients - ingore $ command
-	// Got this idea from floodgap.com
+	// For gopher+ clients - ignore tab and everything after it
 	if((p = strchr(conn->cmd, '\t'))) {
-		strcpy(conn->cmd, "0/.gopher+");
+		if(verbose > 2) printf("  Gopher+\n");
+		if(strcmp(conn->cmd, "\t$") == 0)
+			// UMN client - got this idea from floodgap.com
+			strcpy(conn->cmd, "0/.gopher+");
+		else
+			*p = '\0';
 	}
 
 	seteuid(uid);

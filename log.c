@@ -1,7 +1,7 @@
 /*
  * log.c - log file output for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.6 $ $Date: 2002/09/22 17:54:24 $
+ * $Revision: 1.7 $ $Date: 2002/09/27 03:16:50 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
