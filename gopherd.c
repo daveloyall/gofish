@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.13 $ $Date: 2002/10/18 22:15:38 $
+ * $Revision: 1.14 $ $Date: 2002/10/21 00:31:45 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -35,11 +35,6 @@
 #include "gopherd.h"
 #include "version.h"
 
-#ifdef HAVE_MMAP
-#include <sys/mman.h>
-#endif
-
-
 int verbose = 0;
 int max_requests = 1; // we don't care about 1
 
@@ -57,6 +52,12 @@ static fd_set readfds, writefds;
 static int nfds;
 
 static void start_selecting(int csock);
+
+void set_writeable(struct connection *conn)
+{
+	FD_CLR(conn->sock, &readfds);
+	FD_SET(conn->sock, &writefds);
+}
 #endif
 
 
@@ -202,9 +203,7 @@ void gopherd(void)
 		conns[i].conn_n = i;
 	}
 
-#ifdef USE_CACHE	
 	mmap_init();
-#endif	
 
 	// These never return
 #ifdef HAVE_POLL
@@ -342,36 +341,6 @@ void start_selecting(int csock)
 }
 #endif
 
-#if !defined(HAVE_MMAP)
-#define PROT_READ	0
-#define MAP_SHARED	0
-
-
-// This is an incomplete implementation of mmap just for GoFish
-// start, prot, flags, and offset args ignored
-void *mmap(void *start,  size_t length, int prot , int flags, int fd, off_t offset)
-{
-	char *buf;
-
-	if((buf = malloc(length)) == NULL) return NULL;
-
-	lseek(fd, 0, SEEK_SET);
-	if(read(fd, buf, length) != length) {
-		free(buf);
-		return NULL;
-	}
-
-	return buf;
-}
-
-int munmap(void *start, size_t length)
-{
-	free(start);
-	return 0;
-}
-
-#endif
-
 #ifdef ALLOW_NON_ROOT
 int checkpath(char *path)
 {
@@ -465,8 +434,12 @@ void close_request(struct connection *conn, int status)
 	// Log hits in one place
 	log_hit(conn, status);
 
-	// Send errors in one place also
-	if(status != 200 && status != 504) send_error(conn, status);
+	// Send gopher errors in one place also
+	if(status != 200 && status != 504 && !conn->http) {
+		syslog(LOG_WARNING, "Gopher error %d http %d\n",
+			   status, conn->http);
+		send_error(conn, status);
+	}
 
 	// Note: conn[0] never has memory allocated
 	if(conn->conn_n > MIN_REQUESTS && conn->cmd) {
@@ -477,11 +450,7 @@ void close_request(struct connection *conn, int status)
 	conn->len = conn->offset = 0;
 
 	if(conn->buf) {
-#ifdef USE_CACHE	
-		mmap_release(conn->buf);
-#else	
-		munmap(conn->buf, conn->len);
-#endif	
+		mmap_release(conn);
 		conn->buf = NULL;
 	}
 
@@ -578,7 +547,7 @@ int read_request(struct connection *conn)
 {
 	int fd;
 	int n;
-	char *p;
+	char *p, selector;
 
 	n = read(SOCKET(conn), conn->cmd + conn->offset, MAX_LINE - conn->offset);
 
@@ -608,7 +577,17 @@ int read_request(struct connection *conn)
 	if(conn->offset > 1 && conn->cmd[conn->offset - 2] == '\r')
 		conn->cmd[conn->offset - 2] = '\0';
 
-	if(verbose) printf("%08x: Request '%s'\n", conn->addr, conn->cmd);
+	if(verbose > 1) printf("%08x: Request '%s'\n", conn->addr, conn->cmd);
+
+	memset(conn->iovs, 0, sizeof(conn->iovs));
+
+	if(strncmp(conn->cmd, "GET ",  4) == 0 ||
+	   strncmp(conn->cmd, "HEAD ", 5) == 0)
+		// http request
+		return http_get(conn);
+
+	// -----------------------------------------------------------------
+	// From here on is gopher only
 
 	// For gopher+ clients - ignore tab and everything after it
 	if((p = strchr(conn->cmd, '\t'))) {
@@ -620,75 +599,39 @@ int read_request(struct connection *conn)
 			*p = '\0';
 	}
 
-	if(strncmp(conn->cmd, "GET ",  4) == 0 ||
-	   strncmp(conn->cmd, "HEAD ", 5) == 0)
-		// http request
-		fd = http_get(conn);
-	else
-		fd = smart_open(conn->cmd, &conn->selector);
-
-	if(fd < 0) {
+	if((fd = smart_open(conn->cmd, &selector)) < 0) {
 		close_request(conn, 404);
 		return 1;
 	}
 
-	if(conn->http == HTTP_HEAD) {
-		close(fd);
-		conn->len = 0;
-	} else {
-		conn->len = lseek(fd, 0, SEEK_END);
+	conn->len = lseek(fd, 0, SEEK_END);
 
-#ifdef USE_CACHE
-		conn->buf = mmap_get(conn, fd);
-#else	
-		conn->buf = mmap(NULL, conn->len, PROT_READ, MAP_SHARED, fd, 0);
-#endif
-
-		close(fd);
-
-		// mmap will fail on a zero length file
-		if(conn->buf == NULL && conn->len != 0) {
+	if(conn->len) {
+		if((conn->buf = mmap_get(conn, fd)) == NULL) {
 			syslog(LOG_ERR, "mmap: %m");
 			close_request(conn, 408);
 			return 1;
 		}
 	}
 
-	memset(conn->iovs, 0, sizeof(conn->iovs));
+	close(fd);
 
-	if(conn->http_header) {
-		conn->iovs[0].iov_base = conn->http_header;
-		conn->iovs[0].iov_len  = strlen(conn->http_header);
-	}
+	conn->iovs[0].iov_base = conn->buf;
+	conn->iovs[0].iov_len  = conn->len;
 
-	if(conn->html_header) {
-		conn->iovs[1].iov_base = conn->html_header;
-		conn->iovs[1].iov_len  = strlen(conn->html_header);
-	}
-
-	conn->iovs[2].iov_base = conn->buf;
-	conn->iovs[2].iov_len  = conn->len;
-
-	if(conn->html_trailer) {
-		conn->iovs[3].iov_base = conn->html_trailer;
-		conn->iovs[3].iov_len  = strlen(conn->html_trailer);
-	}
-
-	if(conn->selector == '0') {
+	if(selector == '0') {
 		if(conn->len > 0 && conn->buf[conn->len - 1] != '\n') {
-			conn->iovs[3].iov_base = "\r\n.\r\n";
-			conn->iovs[3].iov_len  = 5;
+			conn->iovs[1].iov_base = "\r\n.\r\n";
+			conn->iovs[1].iov_len  = 5;
 		} else {
-			conn->iovs[3].iov_base = ".\r\n";
-			conn->iovs[3].iov_len  = 3;
+			conn->iovs[1].iov_base = ".\r\n";
+			conn->iovs[1].iov_len  = 3;
 		}
+		conn->len += conn->iovs[1].iov_len;
+		conn->n_iovs = 2;
 	}
-
-	conn->len =
-		conn->iovs[0].iov_len +
-		conn->iovs[1].iov_len +
-		conn->iovs[2].iov_len +
-		conn->iovs[3].iov_len;
+	else
+		conn->n_iovs = 1;
 
 	set_writeable(conn);
 
@@ -701,7 +644,7 @@ int write_request(struct connection *conn)
 	int n, i;
 	struct iovec *iov;
 
-	n = writev(SOCKET(conn), conn->iovs, 4);
+	n = writev(SOCKET(conn), conn->iovs, conn->n_iovs);
 
 	if(n <= 0) {
 		syslog(LOG_ERR, "writev: %m");
@@ -709,7 +652,7 @@ int write_request(struct connection *conn)
 		return 1;
 	}
 
-	for(iov = conn->iovs, i = 0; i < 4; ++i, ++iov)
+	for(iov = conn->iovs, i = 0; i < conn->n_iovs; ++i, ++iov)
 		if(n >= iov->iov_len) {
 			n -= iov->iov_len;
 			iov->iov_len = 0;

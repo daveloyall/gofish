@@ -3,6 +3,8 @@ AC_INIT(gopherd.h)
 AM_INIT_AUTOMAKE(gofish, 1.0)
 AM_CONFIG_HEADER(config.h:config.h.in)
 
+AC_CANONICAL_HOST
+
 dnl Checks for programs.
 AC_PROG_CC
 AC_PROG_INSTALL
@@ -14,7 +16,7 @@ AC_CHECK_LIB(socket, socket)
 dnl Checks for header files.
 AC_HEADER_DIRENT
 AC_HEADER_STDC
-AC_CHECK_HEADERS(fcntl.h limits.h malloc.h sys/time.h syslog.h unistd.h)
+AC_CHECK_HEADERS(fcntl.h limits.h sys/time.h syslog.h unistd.h)
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
@@ -33,7 +35,20 @@ AC_CHECK_FUNCS(mmap)
 AC_TYPE_SIGNAL
 AC_FUNC_STRFTIME
 AC_CHECK_FUNCS(gethostname select socket strdup strerror strstr strtol uname)
-AC_CHECK_FUNCS(poll writev)
+AC_CHECK_FUNCS(writev)
+
+dnl poll does not work on the arm
+dnl if this goes, AC_CANONICAL_HOST and the files
+dnl config.sub and config.guess can go
+case $host in
+  armv4l-*) ;;
+  *) AC_CHECK_FUNCS(poll) ;;
+esac
+
+dnl Add -Wall option for gcc
+if test "$GCC" = "yes"; then
+  CFLAGS="$CFLAGS -Wall"
+fi
 
 AC_MSG_CHECKING([http support])
 if test "$enable_http" = "no"; then
@@ -42,5 +57,13 @@ else
   enable_http=yes
 fi
 AC_MSG_RESULT([$enable_http])
+
+AC_MSG_CHECKING([virtual hosts])
+if test "$enable_virtual_hosts" = "yes"; then
+  AC_DEFINE(VIRTUAL_HOSTS, 1)
+else
+  enable_virtual_hosts=no
+fi
+AC_MSG_RESULT([$enable_virtual_hosts])
 
 AC_OUTPUT(Makefile)

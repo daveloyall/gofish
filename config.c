@@ -1,7 +1,7 @@
 /*
  * config.c - read the config file for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.12 $ $Date: 2002/10/18 22:15:38 $
+ * $Revision: 1.13 $ $Date: 2002/10/21 00:31:45 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -93,10 +93,10 @@ int read_config(char *fname)
 			}
 			s = p++;
 
-			while(isspace(*(s - 1))) --s;
+			while(isspace((int)*(s - 1))) --s;
 			*s++ = '\0';
 
-			while(isspace(*p)) ++p;
+			while(isspace((int)*p)) ++p;
 			if(*p == '\0') {
 				printf("No value for '%s'\n", line);
 				continue;

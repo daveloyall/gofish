@@ -1,7 +1,7 @@
 /*
  * log.c - log file output for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.12 $ $Date: 2002/10/18 22:15:38 $
+ * $Revision: 1.13 $ $Date: 2002/10/21 00:31:45 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -83,7 +83,6 @@ void log_hit(struct connection *conn, unsigned status)
 		name = conn->cmd + 4;
 		while(*name == '/') ++name;
 		strcat(name, " HTTP");
-		conn->http = 0;
 	} else
 		name = conn->cmd ? (*conn->cmd ? conn->cmd : "/") : "[Empty]";
 

@@ -1,7 +1,7 @@
 /*
  * mmap-cache.c - GoFish mmap caching for performance
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.4 $ $Date: 2002/10/18 22:15:38 $
+ * $Revision: 1.5 $ $Date: 2002/10/21 00:31:45 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -18,6 +18,8 @@
  * the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
  * Boston, MA 02111-1307, USA.
  */
+
+/* All knowledge of mmap is isolated to this file. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,10 +38,40 @@
 #include "gopherd.h"
 #include "version.h"
 
-#ifdef USE_CACHE
 #ifdef HAVE_MMAP
 #include <sys/mman.h>
+#else
+
+#define PROT_READ	0
+#define MAP_SHARED	0
+
+
+// This is an incomplete implementation of mmap just for GoFish
+// start, prot, flags, and offset args ignored
+void *mmap(void *start,  size_t length, int prot , int flags, int fd, off_t offset)
+{
+	char *buf;
+
+	if((buf = malloc(length)) == NULL) return NULL;
+
+	lseek(fd, 0, SEEK_SET);
+	if(read(fd, buf, length) != length) {
+		free(buf);
+		return NULL;
+	}
+
+	return buf;
+}
+
+int munmap(void *start, size_t length)
+{
+	free(start);
+	return 0;
+}
+
 #endif
+
+#ifdef USE_CACHE
 
 #define MMAP_CACHE	150 	// SAM must be >= MAX_REQUESTS
 
@@ -123,18 +155,33 @@ unsigned char *mmap_get(struct connection *conn, int fd)
 }
 
 
-void mmap_release(unsigned char *buf)
+void mmap_release(struct connection *conn)
 {
 	struct cache *m;
 	int i;
 
 	for(i = 0, m = mmap_cache; i < MMAP_CACHE; ++i, ++m)
-		if(m->mapped == buf) {
+		if(m->mapped == conn->buf) {
 			m->in_use--;
 			return;
 		}
 
 	printf("PROBLEMS: buffer not in cache\n");
+}
+
+#else
+
+void mmap_init(void) {}
+
+
+unsigned char *mmap_get(struct connection *conn, int fd)
+{
+	return mmap(NULL, conn->len, PROT_READ, MAP_SHARED, fd, 0);
+}
+
+void mmap_release(struct connection *conn)
+{
+	munmap(conn->buf, conn->len);
 }
 
 #endif // USE_CACHE

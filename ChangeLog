@@ -1,3 +1,11 @@
+Changes for 0.18
+
+    GoFish
+
+	* proper http errors
+	* rewrote read_request
+	* moved more code to http_get
+
 Changes for 0.17
 
     GoFish

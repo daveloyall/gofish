@@ -36,6 +36,9 @@
 /* http gateway support */
 #define USE_HTTP 1
 
+/* virtual hosts */
+#undef VIRTUAL_HOSTS
+
 /* Define if you have the gethostname function.  */
 #undef HAVE_GETHOSTNAME
 
@@ -77,9 +80,6 @@
 
 /* Define if you have the <limits.h> header file.  */
 #undef HAVE_LIMITS_H
-
-/* Define if you have the <malloc.h> header file.  */
-#undef HAVE_MALLOC_H
 
 /* Define if you have the <ndir.h> header file.  */
 #undef HAVE_NDIR_H

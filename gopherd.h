@@ -1,7 +1,7 @@
 /*
  * gopherd.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.13 $ $Date: 2002/10/18 22:15:38 $
+ * $Revision: 1.14 $ $Date: 2002/10/21 00:31:45 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -67,12 +67,12 @@ struct connection {
 #endif
 	unsigned addr;
 	char *cmd;
-	char selector;
 	off_t offset;
 	size_t len;
 	unsigned char *buf;
 	int   status;
 	struct iovec iovs[4];
+	int n_iovs;
 
 	// http stuff
 	int http;
@@ -86,6 +86,8 @@ struct connection {
 
 
 // exported from gopherd.c
+extern int verbose;
+
 extern void close_request(struct connection *conn, int status);
 int checkpath(char *path);
 
@@ -126,12 +128,10 @@ int http_send_response(struct connection *conn);
 void init_mime(void);
 char *find_mime(char *fname);
 
-#ifdef USE_CACHE
 // exported from mmap_cache.c
 void mmap_init(void);
 unsigned char *mmap_get(struct connection *conn, int fd);
-void mmap_release(unsigned char *buf);
-#endif
+void mmap_release(struct connection *conn);
 
 
 #if MAX_REQUESTS < 2
@@ -163,9 +163,7 @@ void mmap_release(unsigned char *buf);
 		if(sock + 1 > nfds) nfds = sock + 1; \
 	} while(0)
 
-#define set_writeable(c) \
-	FD_CLR((c)->sock, &readfds); \
-	FD_SET((c)->sock, &writefds)
+void set_writeable(struct connection *conn);
 
 #endif
 
