@@ -1,7 +1,7 @@
 /*
- * mmap-cache.c - mmap caching for performance
+ * mmap-cache.c - GoFish mmap caching for performance
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.2 $ $Date: 2002/10/15 03:16:57 $
+ * $Revision: 1.3 $ $Date: 2002/10/18 04:21:18 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the

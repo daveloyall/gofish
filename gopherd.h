@@ -1,7 +1,7 @@
 /*
  * gopherd.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.11 $ $Date: 2002/10/15 03:16:57 $
+ * $Revision: 1.12 $ $Date: 2002/10/18 04:21:18 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -66,18 +66,21 @@ struct connection {
 #endif
 	unsigned addr;
 	char *cmd;
+	char selector;
 	off_t offset;
 	size_t len;
 	unsigned char *buf;
 	int   status;
 	struct iovec iovs[4];
-#if defined(USE_HTTP)
+
+	// http stuff
 	int http;
+#define	HTTP_GET	1
+#define HTTP_HEAD	2
 	char *http_header;
 	char *html_header;
 	char *html_trailer;
 	char *outname;
-#endif
 };
 
 
@@ -117,6 +120,12 @@ int http_init(void);
 void http_cleanup(void);
 int http_get(struct connection *conn);
 int http_send_response(struct connection *conn);
+
+#ifdef USE_MIME
+// exported from mime.c
+void init_mime(void);
+char *find_mime(char *fname);
+#endif
 
 #ifdef USE_CACHE
 // exported from mmap_cache.c

@@ -27,6 +27,7 @@
 #include <errno.h>
 #include <ctype.h>
 #include <sys/utsname.h>
+#include <sys/stat.h>
 
 #include "gopherd.h"
 #include "version.h"
@@ -45,8 +46,9 @@ static char *os_str;
 
 #define HTML_TRAILER "</pre></table></center></body>\n"
 
-static int smart_open(char *name, char type);
+extern int smart_open(char *name, char *type);
 
+static int isdir(char *name);
 
 inline int write_out(int fd, char *buf, int len)
 {
@@ -269,94 +271,23 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 }
 
 
-static int valid_type(char type)
-{
-	switch(type) {
-	case '0':
-	case '1':
-	case '9':
-	case 'g':
-	case 'h':
-	case 'I':
-		return 1;
-	case 'i':
-	default:
-		return 0;
-	}
-}
-
-
-struct mime {
-	char *ext;
-	char *mime;
-};
-
-// SAM Put this in config file.
-static struct mime image_mimes[] = {
-	{ "gif",  "image/gif"  },
-	{ "jpg",  "image/jpeg" },
-	{ "png",  "image/png"  },
-	{ "jpeg", "image/jpeg" },
-};
-#define N_IMAGE_MIMES	(sizeof(image_mimes) / sizeof(struct mime))
-
-
-static char *mime_image(char *file)
-{
-	char *p;
-	int i;
-
-	if((p = strrchr(file, '.')) == NULL) return NULL;
-	++p;
-
-	for(i = 0; i < N_IMAGE_MIMES; ++i)
-		if(strcasecmp(p, image_mimes[i].ext) == 0)
-			return image_mimes[i].mime;
-
-	return NULL;
-}
-
-static struct mime binary_mimes[] = {
-	{ "pdf",  "application/pdf"  },
-};
-#define N_BINARY_MIMES	(sizeof(binary_mimes) / sizeof(struct mime))
-
-static char *mime_binary(char *file)
-{
-	char *p;
-	int i;
-
-	if((p = strrchr(file, '.'))) {
-		++p;
-
-		for(i = 0; i < N_BINARY_MIMES; ++i)
-			if(strcasecmp(p, binary_mimes[i].ext) == 0)
-				return binary_mimes[i].mime;
-	}
-
-	return "application/octet-stream";
-}
-
-
 /*
  * This routine is exported to GoFish to process http GET requests.
  *
  * This routine is responsonsible for sending errors but does not log
  * hits, even for errors.
- *
- * We expect *at minimum* "GET / HTTP/x.x"
- * Normal: "GET /?[type][type]?/<path> HTTP/x.x"
  */
 int http_get(struct connection *conn)
 {
 	static char *mime_html = "text/html; charset=iso-8859-1";
 	char *e;
 	int fd;
-	char *mime, type1;
+	char *mime, type;
 	char *request = conn->cmd;
 
-	conn->http = 1;
+	conn->http = *request == 'H' ? HTTP_HEAD : HTTP_GET;
 
+	// This works for both GET and HEAD
 	request += 4;
 	while(isspace(*request)) ++request;
 
@@ -372,35 +303,11 @@ int http_get(struct connection *conn)
 
 	if(*request == '/') ++request;
 
-	if(*request) {
-		type1 = *request++;
-		if(*request && *request != '/') request++;
-		if(*request != '/') {
-			// SAM Rethink this
-			if(strcmp(request, "vicon.ico") == 0) {
-				type1 = '9';
-				request -= 2; // backup
-			} else if(strcmp(request, "bots.txt") == 0) {
-				type1 = '1';
-				request -= 2; // backup
-			} else {
-				syslog(LOG_WARNING, "Bad request '%s'\n", request);
-				return -1;
-			}
-		}
-
-		if(!valid_type(type1)) {
-			syslog(LOG_WARNING, "Invalid type in '%s'\n", request);
-			return -1;
-		}
-	}
-	else
-		type1 = '1';
-
 	unquote(request);
 
-	if((fd = smart_open(request, type1)) > 0) {
-		switch(type1) {
+	if((fd = smart_open(request, &type)) >= 0) {
+		// valid gopher request
+		switch(type) {
 		case '1':
 			fd = http_directory(conn, fd, request);
 			if(fd < 0) return -1;
@@ -408,19 +315,44 @@ int http_get(struct connection *conn)
 			break;
 		case '0':
 			// htmlize it
-			conn->html_header  = HTML_HEADER; // SAM
-			conn->html_trailer = HTML_TRAILER; // SAM
+			conn->html_header  = HTML_HEADER; // SAM hardcoded
+			conn->html_trailer = HTML_TRAILER; // SAM hardcoded
 			mime = "text/html";
 			break;
-		case '9': mime = mime_binary(request); break;
+		case '9':
+			if((mime = find_mime(request)) == NULL)
+			   mime = "application/octet-stream";
+			break;
 		case 'g': mime = "image/gif"; break;
 		case 'h': mime = mime_html; break;
-		case 'I': mime = mime_image(request); break;
+		case 'I': mime = find_mime(request); break;
 		default:
-			syslog(LOG_WARNING, "Bad file type %c", type1);
+			syslog(LOG_WARNING, "Bad file type %c", type);
 			return -1;
 		}
+	} else {
+		// real http request
+		if(*request) {
+			if(isdir(request)) {
+				char dirname[MAX_LINE + 20], *p;
 
+				strcpy(dirname, request);
+				p = dirname + strlen(dirname);
+				if(*(p - 1) != '/') *p++ = '/';
+				strcpy(p, "index.html"); // SAM hardcoded
+				fd = open(dirname, O_RDONLY);
+				mime = "text/html"; // SAM hardcoded
+			} else {
+				fd = open(request, O_RDONLY);
+				mime = find_mime(request);
+			}
+		} else {
+			fd = open("index.html", O_RDONLY); // SAM hardcoded
+			mime = "text/html"; // SAM hardcoded
+		}
+	}
+
+	if(fd >= 0) {
 		conn->len = lseek(fd, 0, SEEK_END);
 		if(http_build_response(conn, 200, mime)) {
 			syslog(LOG_WARNING, "Out of memory");
@@ -432,7 +364,7 @@ int http_get(struct connection *conn)
 		 * type. All files are "binary" so we do not send the trailing
 		 * dot.
 		 */
-		*conn->cmd = '9';
+		conn->selector = '9';
 
 		return fd;
 	} else {
@@ -440,36 +372,6 @@ int http_get(struct connection *conn)
 		syslog(LOG_WARNING, "%s: %m", request);
 		return -1;
 	}
-}
-
-
-/*
- * This handles parsing the name and opening the file.
- *
- * The difference between this and the gopherd.c version is that we
- * have already stripped the type.
- */
-static int smart_open(char *name, char type)
-{
-	if(*name == '/') ++name;
-
-	if(*name == '\0') return open(".cache", O_RDONLY);
-
-#ifdef ALLOW_NON_ROOT
-	if(checkpath(name)) return -1;
-#endif
-
-	if(type == '1') {
-		char dirname[MAX_LINE + 10], *p;
-
-		strcpy(dirname, name);
-		p = dirname + strlen(dirname);
-		if(*(p - 1) != '/') *p++ = '/';
-		strcpy(p, ".cache");
-		return open(dirname, O_RDONLY);
-	}
-
-	return open(name, O_RDONLY);
 }
 
 
@@ -491,6 +393,15 @@ int http_init()
 void http_cleanup()
 {
 	free(os_str);
+}
+
+
+static int isdir(char *name)
+{
+	struct stat sbuf;
+
+	if(stat(name, &sbuf) == -1) return 0;
+	return S_ISDIR(sbuf.st_mode);
 }
 
 

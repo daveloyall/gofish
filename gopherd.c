@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.11 $ $Date: 2002/10/15 03:16:57 $
+ * $Revision: 1.12 $ $Date: 2002/10/18 04:21:18 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -135,6 +135,10 @@ int main(int argc, char *argv[])
 		}
 
 	if(read_config(config)) exit(1);
+
+#ifdef USE_MIME
+	init_mime();
+#endif
 
 	http_init();
 
@@ -407,24 +411,37 @@ int checkpath(char *path)
 
 
 // This handles parsing the name and opening the file
-// We allow the following /?[019]/?<path> || nothing
-static int smart_open(char *name)
+// We allow the following /?<selector>/?<path> || nothing
+// Returns the selector type in `selector'
+int smart_open(char *name, char *selector)
 {
 	char type;
 
 	if(*name == '/') ++name;
+
+	// This is worth opimizing
+	if(*name == '\0') {
+		if(selector) *selector = '1';
+		return open(".cache", O_RDONLY);
+	}
+
 	type = *name++;
-	if(type && *name == '/') ++name;
+	if(*name == '/') ++name;
 
 #ifdef ALLOW_NON_ROOT
 	if(checkpath(name)) return -1;
 #endif
 
+	if(selector) *selector = type;
+
 	switch(type) {
-	case '\0':
-		return open(".cache", O_RDONLY);
 	case '0':
+	case '4':
+	case '5':
+	case '6':
 	case '9':
+	case 'g':
+	case 'I':
 		return open(name, O_RDONLY);
 	case '1':
 	{
@@ -489,7 +506,6 @@ void close_request(struct connection *conn, int status)
 #endif
 	}
 
-#ifdef USE_HTTP
 	if(conn->http_header) {
 		free(conn->http_header);
 		conn->http_header = NULL;
@@ -502,7 +518,8 @@ void close_request(struct connection *conn, int status)
 	}
 	conn->html_header  = NULL;
 	conn->html_trailer = NULL;
-#endif
+
+	conn->http = 0;
 
 	conn->status = 200;
 }
@@ -605,36 +622,42 @@ int read_request(struct connection *conn)
 			*p = '\0';
 	}
 
-	if(strncmp(conn->cmd, "GET ", 4) == 0)
-		// Someone did an http://host:70/
+	if(strncmp(conn->cmd, "GET ",  4) == 0 ||
+	   strncmp(conn->cmd, "HEAD ", 5) == 0)
+		// http request
 		fd = http_get(conn);
 	else
-		fd = smart_open(conn->cmd);
+		fd = smart_open(conn->cmd, &conn->selector);
 
 	if(fd < 0) {
 		close_request(conn, 404);
 		return 1;
 	}
 
-	conn->len = lseek(fd, 0, SEEK_END);
+	if(conn->http == HTTP_HEAD) {
+		close(fd);
+		conn->len = 0;
+	} else {
+		conn->len = lseek(fd, 0, SEEK_END);
 
 #ifdef USE_CACHE
-	conn->buf = mmap_get(conn, fd);
+		conn->buf = mmap_get(conn, fd);
 #else	
-	conn->buf = mmap(NULL, conn->len, PROT_READ, MAP_SHARED, fd, 0);
+		conn->buf = mmap(NULL, conn->len, PROT_READ, MAP_SHARED, fd, 0);
 #endif
-	close(fd);
 
-	// mmap will fail on a zero length file
-	if(conn->buf == NULL && conn->len != 0) {
-		syslog(LOG_ERR, "mmap: %m");
-		close_request(conn, 408);
-		return 1;
+		close(fd);
+
+		// mmap will fail on a zero length file
+		if(conn->buf == NULL && conn->len != 0) {
+			syslog(LOG_ERR, "mmap: %m");
+			close_request(conn, 408);
+			return 1;
+		}
 	}
 
 	memset(conn->iovs, 0, sizeof(conn->iovs));
 
-#ifdef USE_HTTP
 	if(conn->http_header) {
 		conn->iovs[0].iov_base = conn->http_header;
 		conn->iovs[0].iov_len  = strlen(conn->http_header);
@@ -644,27 +667,24 @@ int read_request(struct connection *conn)
 		conn->iovs[1].iov_base = conn->html_header;
 		conn->iovs[1].iov_len  = strlen(conn->html_header);
 	}
-#endif
 
 	conn->iovs[2].iov_base = conn->buf;
 	conn->iovs[2].iov_len  = conn->len;
 
-#ifdef USE_HTTP
 	if(conn->html_trailer) {
 		conn->iovs[3].iov_base = conn->html_trailer;
 		conn->iovs[3].iov_len  = strlen(conn->html_trailer);
 	}
-	else
-#endif
-		if(*conn->cmd != '9') {
-			if(conn->len > 0 && conn->buf[conn->len - 1] != '\n') {
-				conn->iovs[3].iov_base = "\r\n.\r\n";
-				conn->iovs[3].iov_len  = 5;
-			} else {
-				conn->iovs[3].iov_base = ".\r\n";
-				conn->iovs[3].iov_len  = 3;
-			}
+
+	if(conn->selector == '0') {
+		if(conn->len > 0 && conn->buf[conn->len - 1] != '\n') {
+			conn->iovs[3].iov_base = "\r\n.\r\n";
+			conn->iovs[3].iov_len  = 5;
+		} else {
+			conn->iovs[3].iov_base = ".\r\n";
+			conn->iovs[3].iov_len  = 3;
 		}
+	}
 
 	conn->len =
 		conn->iovs[0].iov_len +

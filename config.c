@@ -1,7 +1,7 @@
 /*
  * config.c - read the config file for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.10 $ $Date: 2002/10/15 03:16:57 $
+ * $Revision: 1.11 $ $Date: 2002/10/18 04:21:18 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,6 +44,13 @@ gid_t gid = GOPHER_GID;
 int   ignore_local = IGNORE_LOCAL;
 int   icon_width = ICON_WIDTH;
 int   icon_height = ICON_HEIGHT;
+
+
+#ifdef USE_MIME
+extern void set_mime_file(char *fname);
+#else
+void set_mime_file(char *fname) {}
+#endif
 
 
 // If we are already out of memory, we are in real trouble
@@ -121,6 +128,8 @@ int read_config(char *fname)
 				must_strtol(p, &icon_width);
 			else if(strcmp(line, "icon_height") == 0)
 				must_strtol(p, &icon_height);
+			else if(strcmp(line, "mime_file") == 0)
+				set_mime_file(p);
 			else
 				printf("Unknown config '%s'\n", line);
 		}
