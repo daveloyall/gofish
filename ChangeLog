@@ -1,3 +1,39 @@
+Changes for 0.23
+
+    GoFish
+
+	* added timeouts to connections
+	* mmap returns -1 on failure!
+	* added user config option
+	* added GOPHER_ROOT configure option
+	* configure now honours SYSCONFDIR and LOCALSTATEDIR
+
+Changes for 0.22
+
+    GoFish
+
+	* bugfix http was munmapping incorrectly
+	* bugfix some fd leaks on edge conditions (rare)
+	* added host to logfile for virtual hosts
+	* better handling of dependencies
+
+Changes for 0.21
+
+    GoFish
+
+	* config now allows - or _
+	* two script files
+	* cleanup http errors
+	* renamed gopherd() to gofish()
+	* syslog now uses argv[0]
+	* added STATS command
+	* added locals config option
+	* FreeBSD: configure fixes Makefile
+
+    webtest
+
+	* created
+
 Changes for 0.20
 
     GoFish

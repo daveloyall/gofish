@@ -1,7 +1,6 @@
 /*
  * config.c - read the config file for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.14 $ $Date: 2002/11/03 00:34:12 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,7 +28,6 @@
 #include <syslog.h>
 #include <signal.h>
 #include <errno.h>
-#include <sys/time.h>
 
 #include "gofish.h"
 
@@ -40,6 +38,7 @@ char *pidfile  = NULL;
 char *hostname = NULL;
 
 int   port = GOPHER_PORT;
+char *user = GOPHER_USER;
 uid_t uid  = GOPHER_UID;
 gid_t gid  = GOPHER_GID;
 int   ignore_local  = IGNORE_LOCAL;
@@ -47,6 +46,7 @@ int   icon_width    = ICON_WIDTH;
 int   icon_height   = ICON_HEIGHT;
 int   virtual_hosts = 0;
 int   combined_log  = 0;
+int   is_http       = 0;
 
 
 extern void set_mime_file(char *fname);
@@ -103,6 +103,9 @@ int read_config(char *fname)
 				continue;
 			}
 
+			// Convert _ to -
+			for(s = line; (s = strchr(s, '_')); ++s) *s = '-';
+
 			if(strcmp(line, "root") == 0) {
 				if(root_dir) free(root_dir);
 				root_dir = must_strdup(p);
@@ -114,26 +117,32 @@ int read_config(char *fname)
 				pidfile = must_strdup(p);
 			} else if(strcmp(line, "port") == 0)
 				must_strtol(p, &port);
-			else if(strcmp(line, "uid") == 0)
+			else if(strcmp(line, "user") == 0) {
+				if(user) free(user);
+				user = must_strdup(p);
+			} else if(strcmp(line, "uid") == 0)
 				must_strtol(p, (int*)&uid);
 			else if(strcmp(line, "gid") == 0)
 				must_strtol(p, (int*)&gid);
-			else if(strcmp(line, "no_local") == 0)
+			else if(strcmp(line, "no-local") == 0)
 				must_strtol(p, &ignore_local);
-			else if(strcmp(line, "host") == 0) {
+			else if(strcmp(line, "locals") == 0) {
+				must_strtol(p, &ignore_local);
+				ignore_local = !ignore_local;
+			} else if(strcmp(line, "host") == 0) {
 				if(hostname) free(hostname);
 				hostname = must_strdup(p);
-			} else if(strcmp(line, "icon_width") == 0)
+			} else if(strcmp(line, "icon-width") == 0)
 				must_strtol(p, &icon_width);
-			else if(strcmp(line, "icon_height") == 0)
+			else if(strcmp(line, "icon-height") == 0)
 				must_strtol(p, &icon_height);
 			else if(strcmp(line, "mimefile") == 0)
 				set_mime_file(p);
-			else if(strcmp(line, "virtual_hosts") == 0)
+			else if(strcmp(line, "virtual-hosts") == 0)
 				must_strtol(p, &virtual_hosts);
-			else if(strcmp(line, "combined_log") == 0)
+			else if(strcmp(line, "combined-log") == 0)
 				must_strtol(p, &combined_log);
-			else if(strcmp(line, "mmap_cache_size") == 0) {
+			else if(strcmp(line, "mmap-cache-size") == 0) {
 #ifdef MMAP_CACHE
 				extern int mmap_cache_size;
 				must_strtol(p, &mmap_cache_size);

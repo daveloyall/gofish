@@ -1,7 +1,6 @@
 /*
  * socket.c - socket utilities for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.14 $ $Date: 2002/11/03 00:34:12 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,7 +43,7 @@ int listen_socket(int port)
 	sock_name.sin_port = htons(port);
 	optval = 1;
 
-	if((s = socket (AF_INET, SOCK_STREAM, 0)) == -1)
+	if((s = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 		return -1;
 
 	if(setsockopt(s, SOL_SOCKET, SO_REUSEADDR,

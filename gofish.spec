@@ -1,6 +1,6 @@
 Summary: A Gopher Server
 Name: gofish
-Version: 0.20
+Version: 0.23
 Release: 1
 Copyright: GPL
 Group: Networking/Daemons
@@ -43,7 +43,8 @@ make DESTDIR=$RPM_BUILD_ROOT install
 
 # This is not installed by make install
 mkdir -p $RPM_BUILD_ROOT/etc/rc.d/init.d
-install init-gofish $RPM_BUILD_ROOT/etc/rc.d/init.d/gopherd
+install init-gofish $RPM_BUILD_ROOT/etc/rc.d/init.d/gofish
+install init-gopherd $RPM_BUILD_ROOT/etc/rc.d/init.d/gopherd
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -57,19 +58,30 @@ rm -rf $RPM_BUILD_ROOT
 /usr/bin/mkcache
 /usr/bin/gmap2cache
 /usr/bin/check-files
+/usr/bin/webtest
 /etc/rc.d/init.d/gopherd
+/etc/rc.d/init.d/gofish
 /usr/man/man1/*
 /usr/man/man5/*
 
 %files setup
 %defattr(-,root,root)
 /etc/gofish.conf
+/etc/gofish-www.conf
 /var/lib/gopherd/icons/*
 /var/lib/gopherd/.gopher+
 /var/lib/gopherd/.cache
 /var/lib/gopherd/Configure_GoFish
 
 %changelog
+* Sat Nov  9 2002 Sean MacLennan <seanm@seanm.ca>
+- Updated to 0.21
+- Added webtest
+
+* Sat Nov  2 2002 Sean MacLennan <seanm@seanm.ca>
+- Updated to 0.20
+- Added gofish-www.conf
+
 * Sat Oct 26 2002 Sean MacLennan <seanm@seanm.ca>
 - Updated to 0.19
 - Added gmap2cache

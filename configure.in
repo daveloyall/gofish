@@ -5,13 +5,20 @@ AM_CONFIG_HEADER(config.h:config.h.in)
 
 AC_CANONICAL_HOST
 
+dnl Extra configure arguments
+gopherroot=$localstatedir/lib/gopherd
+AC_ARG_WITH(gopherroot,
+	[  --with-gopheroot=ROOT   Use ROOT for Gopher documents],
+	[gopherroot=$withval])
+AC_SUBST(gopherroot)
+
 dnl Checks for programs.
 AC_PROG_CC
 AC_PROG_INSTALL
 
-dnl Checks for libraries.
-dnl Sun needs -lsocket
+dnl Checks for Sun libraries.
 AC_CHECK_LIB(socket, socket)
+AC_CHECK_LIB(nsl, gethostbyname)
 
 dnl Checks for header files.
 AC_HEADER_DIRENT
@@ -52,7 +59,7 @@ fi
 
 AC_MSG_CHECKING([mmap_cache])
 if test "$enable_mmap_cache" = "yes"; then
-  AC_DEFINE(MMAP_CACHE, 1)
+  AC_DEFINE(MMAP_CACHE, 1, [Define this to enable mmap cache])
 else
   enable_mmap_cache=no
 fi

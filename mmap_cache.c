@@ -1,7 +1,6 @@
 /*
  * mmap-cache.c - GoFish mmap caching for performance
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.6 $ $Date: 2002/11/03 00:34:12 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -32,7 +31,6 @@
 #include <signal.h>
 #include <errno.h>
 #include <limits.h>
-#include <time.h>
 #include <sys/stat.h>
 
 #include "gofish.h"
@@ -43,6 +41,7 @@
 
 #define PROT_READ	0
 #define MAP_SHARED	0
+#define MAP_FAILED	-1
 
 
 // This is an incomplete implementation of mmap just for GoFish
@@ -51,12 +50,12 @@ void *mmap(void *start,  size_t length, int prot , int flags, int fd, off_t offs
 {
 	char *buf;
 
-	if((buf = malloc(length)) == NULL) return NULL;
+	if((buf = malloc(length)) == NULL) return MAP_FAILED;
 
 	lseek(fd, 0, SEEK_SET);
 	if(read(fd, buf, length) != length) {
 		free(buf);
-		return NULL;
+		return MAP_FAILED;
 	}
 
 	return buf;
@@ -69,6 +68,9 @@ int munmap(void *start, size_t length)
 }
 
 #endif
+
+unsigned bad_munmaps = 0;
+
 
 #ifdef MMAP_CACHE
 
@@ -146,7 +148,7 @@ unsigned char *mmap_get(struct connection *conn, int fd)
 
 
 	lru->mapped = mmap(NULL, conn->len, PROT_READ, MAP_SHARED, fd, 0);
-	if(lru->mapped == NULL) {
+	if(lru->mapped == MAP_FAILED) {
 		syslog(LOG_DEBUG, "REAL PROBLEMS: mmap failed!!");
 		return NULL;
 	}
@@ -182,12 +184,21 @@ void mmap_init(void) {}
 
 unsigned char *mmap_get(struct connection *conn, int fd)
 {
-	return mmap(NULL, conn->len, PROT_READ, MAP_SHARED, fd, 0);
+	unsigned char *mapped;
+
+	// We mess around with conn->len
+	conn->mapped = conn->len;
+	mapped = mmap(NULL, conn->mapped, PROT_READ, MAP_SHARED, fd, 0);
+	return mapped == MAP_FAILED ? NULL : mapped;
 }
+
 
 void mmap_release(struct connection *conn)
 {
-	munmap(conn->buf, conn->len);
+	if(munmap(conn->buf, conn->mapped)) {
+		++bad_munmaps;
+		syslog(LOG_ERR, "munmap %p %d", conn->buf, conn->mapped);
+	}
 }
 
 #endif // MMAP_CACHE

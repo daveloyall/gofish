@@ -1,7 +1,6 @@
 /*
  * log.c - log file output for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.14 $ $Date: 2002/11/03 00:34:12 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -23,7 +22,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <syslog.h>
-#include <time.h>
 #include <ctype.h>
 #include <errno.h>
 #include <pthread.h>
@@ -65,7 +63,7 @@ int log_open(char *logname)
 // Common log file format
 void log_hit(struct connection *conn, unsigned status)
 {
-	char date[40];
+	char common[80], *p;
 	time_t now;
 	struct tm *t;
 
@@ -78,21 +76,34 @@ void log_hit(struct connection *conn, unsigned status)
 	time(&now);
 	t = localtime(&now);
 
-	strftime(date, sizeof(date), "%d/%b/%Y:%T %z", t);
+	// Get some of the fixed length common stuff out of the way
+	strcpy(common, ntoa(conn->addr));
+	p = common + strlen(common);
+	strftime(p, sizeof(common) - 30, " - - [%d/%b/%Y:%T %z] \"", t);
+	strcat(p, conn->http == HTTP_HEAD ? "HEAD" : "GET");
 
 	if(conn->http) {
-		char *referer, *agent, *p, *e;
+		char *request, *e;
 
 		if((p = strchr(conn->cmd, '\r')) ||
-		   (p = strchr(conn->cmd, '\n'))) // paranoia
-			*p = '\0';
-		else
-			p = conn->cmd;
+		   (p = strchr(conn->cmd, '\n'))) {// paranoia
+			*p++ = '\0';
+			e = p;
+		} else {
+			p = "?";
+			e = "";
+		}
+
+		// SAM Save this?
+		request = conn->cmd;
+		request += 4;
+		while(isspace((int)*request)) ++request;
+		if(*request == '/') ++request;
 
 		if(combined_log) {
-			e = p + 1;
+			char *referer, *agent;
 
-			if((referer = strstr(e, "Referer:"))) {
+			if((referer = conn->referer)) {
 				for(referer += 8; isspace((int)*referer); ++referer) ;
 				if((p = strchr(referer, '\r')) ||
 				   (p = strchr(referer, '\n')))
@@ -106,7 +117,7 @@ void log_hit(struct connection *conn, unsigned status)
 				referer = "-";
 			}
 
-			if((agent = strstr(e, "User-Agent:"))) {
+			if((agent = conn->user_agent)) {
 				for(agent += 12; isspace((int)*agent); ++agent) ;
 				if((p = strchr(agent, '\r')) ||
 				   (p = strchr(agent, '\n')))
@@ -120,36 +131,39 @@ void log_hit(struct connection *conn, unsigned status)
 				agent = "-";
 			}
 
-			// This is 500 chars max
+			// This is 500 + hostname chars max
 			log_inuse = 1;
-			fprintf(log_fp,
-					"%s - - [%s] \"%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
-					ntoa(conn->addr), date, conn->cmd, status, conn->len,
-					referer, agent);
-			fflush(log_fp);
-			log_inuse = 0;
+			if(virtual_hosts)
+				fprintf(log_fp,
+						"%s %s/%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
+						common, conn->host, request, status, conn->len,
+						referer, agent);
+			else
+				fprintf(log_fp,
+						"%s /%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
+						common, request, status, conn->len, referer, agent);
 		} else {
-			// This is 600 chars max
+			// This is 600 + hostname chars max
+			// SAM 600???
 			log_inuse = 1;
-			fprintf(log_fp, "%s - - [%s] \"%.200s\" %u %u\n",
-					ntoa(conn->addr), date, conn->cmd, status, conn->len);
-			fflush(log_fp);
-			log_inuse = 0;
+			if(virtual_hosts)
+				fprintf(log_fp, "%s %s/%.200s\" %u %u\n",
+						common, conn->host, request, status, conn->len);
+			else
+				fprintf(log_fp, "%s /%.200s\" %u %u\n",
+						common, request, status, conn->len);
 		}
 	} else {
 		char *name = conn->cmd ? (*conn->cmd ? conn->cmd : "/") : "[Empty]";
 
 		// This is 400 chars max
 		log_inuse = 1;
-		if(combined_log)
-			fprintf(log_fp, "%s - - [%s] \"GET %.300s\" %u %u - -\n",
-					ntoa(conn->addr), date, name, status, conn->len);
-		else
-			fprintf(log_fp, "%s - - [%s] \"GET %.300s\" %u %u\n",
-					ntoa(conn->addr), date, name, status, conn->len);
-		fflush(log_fp);
-		log_inuse = 0;
+		fprintf(log_fp, "%s %.300s\" %u %u\n", common, name, status, conn->len);
 	}
+
+	// every path
+	fflush(log_fp);
+	log_inuse = 0;
 
 	if(log_must_reopen)
 		log_reopen(SIGUSR1);

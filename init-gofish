@@ -1,29 +1,19 @@
 #!/bin/bash
 # The following two lines enable chkconfig(1) to manipulate this script
 # chkconfig: 2345 99 01
-# description: control of GoFish gopher daemon
+# description: control of GoFish http daemon
 # modified from Jef Poskanzer's tiny/turbo/throttling http daemon
 
 # source function library
 . /etc/rc.d/init.d/functions
 
-pidfile=/var/run/gopherd.pid
+pidfile=/var/run/gofish.pid
 pid=`cat $pidfile 2>/dev/null`
-
-wwwconf=/etc/gofish-www.conf
-wwwpidfile=/var/run/gofish.pid
-wwwpid=`cat $wwwpidfile 2>/dev/null`
 
 if test -n "$pid" && kill -0 $pid 2>/dev/null; then
 	dead=no
 else
 	dead=yes
-fi
-
-if test -n "$wwwpid" && kill -0 $wwwpid 2>/dev/null; then
-	wwwdead=no
-else
-	wwwdead=yes
 fi
 
 die(){
@@ -32,39 +22,27 @@ die(){
 }
 
 case "$1" in
- start)	if test "$dead" = no ; then
-	  echo -n "gopherd is already running"; echo_failure; echo ''
-	else
-	  echo -n "Starting gopherd: "
-	  daemon /usr/sbin/gopherd -d
-	  touch /var/lock/subsys/gopherd
-	  echo_success;echo ''
-	fi
-
-	if test -f $wwwconf ; then
-	  test "$wwwdead" = yes || die gofish is already running
-	  echo -n "Starting gofish: "
-	  daemon /usr/sbin/gofish -d -c $wwwconf
-	  touch /var/lock/subsys/gofish
-	  echo_success;echo ''
-	fi
-
+ start)	test "$dead" = yes || die gofish is already running
+	echo -n "Starting gofish: "
+	daemon /usr/sbin/gofish -d -c /etc/gofish-www.conf
+	touch /var/lock/subsys/gofish
+	echo_success;echo ''
 	exit 0
 	;;
-  stop)	echo -n "Stopping gopherd: "
+  stop)	echo -n "Stopping gofish: "
 	signal=HUP
 	;;
-  kill)	echo -n "Violently killing gopherd: "
+  kill)	echo -n "Violently killing gofish: "
 	signal=KILL
 	;;
-status)	status gopherd; exit $?;;
+status)	status gofish; exit $?;;
 restart) $0 stop; sleep 2; exec $0 start;;
-     *)	die "Usage: gopherd {start|stop|restart|status}";;
+     *)	die "Usage: gofish {start|stop|restart|status}";;
 esac
 
-if test "$dead" = no || die gopherd is not running
+test "$dead" = no || die gofish is not running
 kill -$signal $pid
 sleep 2
-kill -0 $pid 2>/dev/null && die "gopherd[$pid] will not die"
-rm -f /var/lock/subsys/gopherd
+kill -0 $pid 2>/dev/null && die "gofish[$pid] will not die"
+rm -f /var/lock/subsys/gofish
 echo_success; echo ''

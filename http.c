@@ -26,7 +26,6 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
-#include <time.h>
 #include <sys/utsname.h>
 #include <sys/stat.h>
 
@@ -96,6 +95,9 @@ static char *msg_400 =
 static char *msg_404 =
 "The requested URL was not found on this server.";
 
+static char *msg_414 =
+"The requested URL was too large.";
+
 static char *msg_500 =
 "An internal server error occurred. Try again later.";
 
@@ -105,7 +107,8 @@ static char *msg_500 =
 */
 static int http_error1(struct connection *conn, int status, char *request)
 {
-	char str[4096], *title, *p, *msg;
+	char str[MAX_LINE + MAX_LINE + MAX_SERVER_STRING + 512];
+	char *title, *p, *msg;
 
 	switch(status) {
 	case 301:
@@ -116,7 +119,7 @@ static int http_error1(struct connection *conn, int status, char *request)
 				request);
 		if((msg = strdup(str)) == NULL) {
 			syslog(LOG_WARNING, "http_error: Out of memory.");
-			close_request(conn, status);
+			close_connection(conn, status);
 			return 1;
 		}
 		break;
@@ -124,9 +127,17 @@ static int http_error1(struct connection *conn, int status, char *request)
 		title = "400 Bad Request";
 		msg = msg_400;
 		break;
+	case 403:
+		title = "403 Forbidden";
+		msg = msg_404;
+		break;
 	case 404:
 		title = "404 Not Found";
 		msg = msg_404;
+		break;
+	case 414:
+		title = "414 Request URL Too Large";
+		msg = msg_414;
 		break;
 	case 500:
 		title = "500 Server Error";
@@ -168,7 +179,7 @@ static int http_error1(struct connection *conn, int status, char *request)
 	if((conn->http_header = strdup(str)) == NULL) {
 		syslog(LOG_WARNING, "http_error: Out of memory.");
 		if(status == 302) free(msg);
-		close_request(conn, status);
+		close_connection(conn, status);
 		return 1;
 	}
 
@@ -185,7 +196,7 @@ static int http_error1(struct connection *conn, int status, char *request)
 
 
 /* For all but 301 errors */
-static int http_error(struct connection *conn, int status)
+int http_error(struct connection *conn, int status)
 {
 	return http_error1(conn, status, "bogus");
 }
@@ -211,7 +222,7 @@ static int http_build_response(struct connection *conn, char *type)
 
 	if((conn->http_header = strdup(str)) == NULL) {
 		// Just closing the connection is the best we can do
-		close_request(conn, 500);
+		close_connection(conn, 500);
 		return 1;
 	}
 
@@ -371,8 +382,6 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 			  "</table>\n"
 			  "\n</body>\n</html>\n");
 
-	close(fd);
-
 	return out;
 }
 
@@ -416,12 +425,17 @@ int http_get(struct connection *conn)
 		if(verbose) printf("HTTP Gopher request '%s'\n", request);
 		switch(type) {
 		case '1':
-			if((fd = http_directory(conn, fd, request)) < 0) {
+		{
+			int new = http_directory(conn, fd, request);
+			close(fd);
+			fd = new;
+			if(fd < 0) {
 				MRESTORE(&save);
 				return http_error(conn, 500);
 			}
 			mime = mime_html;
 			break;
+		}
 		case '0':
 			// htmlize it
 			conn->html_header  = HTML_HEADER;
@@ -445,10 +459,14 @@ int http_get(struct connection *conn)
 			break;
 		}
 	} else {
-		// real http request
+		// real http request or bad gateway request
+		if(combined_log) {
+			// Save these up front for logging
+			conn->referer = strstr(e, "Referer:");
+			conn->user_agent = strstr(e, "User-Agent:");
+		}
 
 		if(virtual_hosts) {
-			struct mark hsave;
 			char *host;
 			int rc;
 
@@ -456,25 +474,24 @@ int http_get(struct connection *conn)
 				// isolate the host - ignore the port (if any)
 				for(host += 5; isspace((int)*host); ++host) ;
 				for(e = host; *e && !isspace((int)*e) && *e != ':'; ++e) ;
-				MSAVE(&hsave, e);
 				*e = '\0';
 			}
 
 			if(!host || !*host) {
 				syslog(LOG_WARNING, "Request with no host '%s'", request);
 				MRESTORE(&save);
-				if(host) MRESTORE(&hsave);
-				return http_error(conn, 404);
+				return http_error(conn, 403);
 			}
 
 			// root it
 			--host;
 			*host = '/';
 
-			// SAM Is this an expensive call?
-			rc = chdir(host);
+			conn->host = host;
 
-			MRESTORE(&hsave);
+			// SAM Is this an expensive call?
+			// SAM Cache current?
+			rc = chdir(host);
 
 			if(rc) {
 				syslog(LOG_WARNING, "host '%s': %m", host);
@@ -547,7 +564,6 @@ int http_get(struct connection *conn)
 
 	// Zero length files will fail
 	if(conn->buf == NULL && conn->len) {
-		close(fd);
 		syslog(LOG_ERR, "mmap: %m");
 		return http_error(conn, 500);
 	}

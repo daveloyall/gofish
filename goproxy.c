@@ -1,7 +1,6 @@
 /*
  * goproxy.c - a gopher proxy server for Opera
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.4 $ $Date: 2002/11/03 00:34:12 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -38,7 +37,6 @@
 #include <ctype.h>
 #include <syslog.h>
 #include <signal.h>
-#include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -379,7 +377,7 @@ int connect_socket(int port, unsigned addr)
 	struct sockaddr_in sock_name;
 	int sock;
 
-	if((sock = socket (AF_INET, SOCK_STREAM, 0)) == -1)
+	if((sock = go_socket (AF_INET, SOCK_STREAM, 0)) == -1)
 		return -1;
 
 	memset(&sock_name, 0, sizeof(sock_name));
