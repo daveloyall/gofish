@@ -1,3 +1,9 @@
+Changes for 0.27
+
+    GoFish
+
+	* bugfix for select timeouts
+
 Changes for 0.26
 
     GoFish

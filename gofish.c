@@ -359,14 +359,18 @@ void start_selecting(int csock)
 
 	atexit(cleanup);
 
-	timeoutval.tv_sec  = POLL_TIMEOUT;
-	timeoutval.tv_usec = 0;
 
 	while(1) {
 		memcpy(&cur_reads,  &readfds, sizeof(fd_set));
 		memcpy(&cur_writes, &writefds, sizeof(fd_set));
 
-		timeout = n_connections ? &timeoutval : NULL;
+		if(n_connections) {
+			// We must reset the timeout every time!
+			timeoutval.tv_sec  = POLL_TIMEOUT;
+			timeoutval.tv_usec = 0;
+			timeout = &timeoutval;
+		} else
+			timeout = NULL;
 		if((n = select(nfds, &cur_reads, &cur_writes, NULL, timeout)) < 0) {
 			if(errno != EINTR)
 				syslog(LOG_WARNING, "select: %m");
@@ -857,7 +861,8 @@ void check_old_connections(void)
 	for(c = &conns[1], i = 1; i < MAX_REQUESTS; ++i, ++c)
 		if(SOCKET(c) >= 0 && c->access < checkpoint) {
 			// SAM What about http connections?
-			syslog(LOG_DEBUG, "%s: Killing idle connection.", ntoa(c->addr));
+			syslog(LOG_WARNING, "%s: Killing idle connection.", ntoa(c->addr));
+			syslog(LOG_DEBUG, "%s idle: '%s'", ntoa(c->addr), c->cmd); // SAM DBG
 			close_connection(c, 408);
 		}
 }

@@ -43,8 +43,8 @@
  * connection has been idle for more than MAX_IDLE_TIME, we close the
  * connection.
  */
-#define POLL_TIMEOUT	 10	// seconds
-#define MAX_IDLE_TIME	300	// seconds
+#define POLL_TIMEOUT	 1	// seconds
+#define MAX_IDLE_TIME	60	// seconds
 
 
 // If you leave GOPHER_HOST unset, it will default to your
