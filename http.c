@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <sys/utsname.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include "gofish.h"
 #include "version.h"
@@ -44,13 +45,24 @@ static char *server_str;
 static char *mime_html = "text/html; charset=iso-8859-1";
 
 
-#define HTML_HEADER	"<html><body><center><table><tr><td><pre>\n"
+#define HTML_HEADER \
+			"<!DOCTYPE HTML PUBLIC " \
+			"\"-//W3C//DTD HTML 4.01 Transitional//EN\">\n" \
+			"<html lang=\"en\">\n" \
+			"<head>\n<title>GoFish gopher to http gateway.</title>\n" \
+			"<style type=\"text/css\">\n" \
+			"<!--\nBODY { margin: 1em 15%; }\n-->\n</style>\n" \
+			"</head>\n" \
+			"<body>\n<p><pre>\n"
 
-#define HTML_TRAILER "</pre>\n<tr><td><hr>\n<tr><td><small>" \
+#define HTML_TRAILER "</pre>\n<hr>\n<p><small>" \
 				  	 "<a href=\"http://gofish.sourceforge.net/\">" \
 			         "GoFish " GOFISH_VERSION \
 			  	     "</a> gopher to http gateway.</small>\n" \
-                     "</table></center></body>\n"
+                     "</body>\n</html>\n"
+#define TEXT_TRAILER "\n\n" \
+"------------------------------------------------------------------------\n" \
+					 "GoFish " GOFISH_VERSION " gopher to http gateway\n"
 #define HTML_INDEX_FILE	"index.html"
 #define HTML_INDEX_TYPE	mime_html
 
@@ -58,6 +70,8 @@ static char *mime_html = "text/html; charset=iso-8859-1";
 extern int smart_open(char *name, char *type);
 
 static int isdir(char *name);
+
+static int go_chdir(const char *path);
 
 
 inline int write_out(int fd, char *buf, int len)
@@ -171,8 +185,9 @@ static int http_error1(struct connection *conn, int status, char *request)
 	p = str + strlen(str);
 	sprintf(p,
 			"<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\r\n"
+			"<html lang=\"en\">\n<head>\n"
 			"<title>%s</title>\r\n"
-			"</head><body><h1>%s</h1>\r\n"
+			"</head>\n<body><h1>%s</h1>\r\n"
 			"<p>%s\r\n"
 			"</body></html>\r\n",
 			title, title, msg);
@@ -250,12 +265,9 @@ static int http_dir_line(int out, char *line)
 	for(port = p; *p && *p != '\t'; ++p) ;
 	*p++ = '\0';
 
-	write_str(out, "  <tr>\n");
-
 	if(*line == 'i') {
-		write_str(out, "   <td>&nbsp;<td>");
 		write_str(out, line + 1);
-		write_out(out, "\n", 1);
+		write_str(out, "<br>\n");
 	} else {
 		switch(*line) {
 		case '0': icon = "text"; break;
@@ -267,10 +279,9 @@ static int http_dir_line(int out, char *line)
 		}
 
 		sprintf(buf,
-				"   <td width=%d>"
 				"<img src=\"/g/icons/gopher_%s.gif\" "
-				"width=%d height=%d alt=\"[%s]\">\n   <td>",
-				icon_width + 4, icon, icon_width, icon_height, icon);
+				"width=%d height=%d alt=\"[%s]\">\n ",
+				icon, icon_width, icon_height, icon);
 		write_str(out, buf);
 
 		if(strcmp(host, hostname) && strcmp(host, "localhost")) {
@@ -288,7 +299,7 @@ static int http_dir_line(int out, char *line)
 			write_str(out, buf);
 			write_str(out, "\">");
 			write_str(out, buf);
-			write_str(out, "</a>\n");
+			write_str(out, "</a><br>\n");
 		} else {
 			write_str(out, "<a href=\"/");
 #ifdef STRICT_GOPHER
@@ -299,7 +310,7 @@ static int http_dir_line(int out, char *line)
 #endif
 			write_str(out, "\">");
 			write_str(out, desc);
-			write_str(out, "</a>\n");
+			write_str(out, "</a><br>\n");
 		}
 	}
 
@@ -335,16 +346,17 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 	p = url + strlen(url);
 	if(*(p - 1) != '/') strcpy(p, "/");
 
-	// The table inside a table works better for Opera
 	sprintf(buffer,
 			"<!DOCTYPE HTML PUBLIC "
 			"\"-//W3C//DTD HTML 4.01 Transitional//EN\">\n"
-			"<html>\n<head><title>%.80s</title></head>\n"
-			"<body bgcolor=white>\n\n"
-			"<table border=0 width=\"80%%\" align=center>\n"
-			"<tr><td><h1>Index of %s</h1>\n"
-			"<tr><td><hr>\n"
-			"<tr><td>\n <table border=0>\n",
+			"<html lang=\"en\">\n"
+			"<head>\n<title>%.80s</title>\n"
+			"<style type=\"text/css\">\n"
+			"<!--\nBODY { margin: 1em 10%%; }\n-->\n</style>\n"
+			"</head>\n"
+			"<body>\n"
+			"<h1>Index of %s</h1>\n"
+			"<hr>\n<p>",
 			url, url);
 	write_str(out, buffer);
 
@@ -379,13 +391,12 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 		return -1;
 	}
 
-	write_str(out, " </table>\n<tr><td><hr>\n"
-			  "<tr><td><small>"
+	write_str(out, "<hr>\n"
+			  "<small>"
 			  "<a href=\"http://gofish.sourceforge.net/\">"
 			  "GoFish " GOFISH_VERSION
 			  "</a> gopher to http gateway.</small>\n"
-			  "</table>\n"
-			  "\n</body>\n</html>\n");
+			  "</body>\n</html>\n");
 
 	return out;
 }
@@ -431,49 +442,68 @@ int http_get(struct connection *conn)
 		conn->user_agent = strstr(e, "User-Agent:");
 	}
 
-	if(is_gopher && (fd = smart_open(request, &type)) >= 0) {
-		// valid gopher request
-		if(verbose) printf("HTTP Gopher request '%s'\n", request);
-		switch(type) {
-		case '1':
-			new = http_directory(conn, fd, request);
-			close(fd);
-			fd = new;
-			if(fd < 0) {
-				MRESTORE(&save);
-				return http_error(conn, 500);
+	if(is_gopher) {
+		if((fd = smart_open(request, &type)) >= 0) {
+			// valid gopher request
+			if(verbose) printf("HTTP Gopher request '%s'\n", request);
+			switch(type) {
+			case '1':
+				new = http_directory(conn, fd, request);
+				close(fd);
+				fd = new;
+				if(fd < 0) {
+					MRESTORE(&save);
+					return http_error(conn, 500);
+				}
+				mime = mime_html;
+				break;
+			case '0':
+				if(htmlizer) {
+					conn->html_header  = HTML_HEADER;
+					conn->html_trailer = HTML_TRAILER;
+					mime = mime_html;
+				} else {
+					conn->html_trailer = TEXT_TRAILER;
+					mime = "text/plain";
+				}
+				break;
+			case '4':
+			case '5':
+			case '6':
+			case '9':
+				if((mime = mime_find(request)) == NULL)
+					mime = "application/octet-stream";
+				break;
+			case 'g': mime = "image/gif"; break;
+			case 'h': mime = mime_html; break;
+			case 'I': mime = mime_find(request); break;
+			default:
+				// Safe default - let the user handle it
+				mime = "application/octet-stream";
+				syslog(LOG_WARNING, "Bad file type %c", type);
+				break;
 			}
-			mime = mime_html;
-			break;
-		case '0':
-			// htmlize it
-			conn->html_header  = HTML_HEADER;
-			conn->html_trailer = HTML_TRAILER;
-			mime = "text/html";
-			break;
-		case '4':
-		case '5':
-		case '6':
-		case '9':
-			if((mime = mime_find(request)) == NULL)
-			   mime = "application/octet-stream";
-			break;
-		case 'g': mime = "image/gif"; break;
-		case 'h': mime = mime_html; break;
-		case 'I': mime = mime_find(request); break;
-		default:
-			// Safe default - let the user handle it
-			mime = "application/octet-stream";
-			syslog(LOG_WARNING, "Bad file type %c", type);
-			break;
+		} else {
+			if(verbose) printf("HTTP Gopher invalid '%s'\n", request);
+			syslog(LOG_WARNING, "%s: %m", request);
+			MRESTORE(&save);
+			return http_error(conn, 404);
 		}
-	} else if(is_gopher) {
-		if(verbose) printf("HTTP Gopher invalid '%s'\n", request);
-		syslog(LOG_WARNING, "%s: %m", request);
-		MRESTORE(&save);
-		return http_error(conn, 404);
-	} else {
-		// real http request
+	} else {// real http request
+#ifdef CGI
+		char *p;
+
+		if((p = strstr(request, "cgi-bin/"))) {
+			extern int cgi(struct connection *conn, char *request); // SAM
+			int rc;
+
+			if(go_chdir("/cgi-bin"))
+				printf("Chdir to cgi-bin failed!\n");
+			rc = cgi(conn, p + 8);
+			MRESTORE(&save);
+			return rc;
+		}
+#endif
 		if(virtual_hosts) {
 			char *host;
 			int rc;
@@ -499,7 +529,7 @@ int http_get(struct connection *conn)
 
 			// SAM Is this an expensive call?
 			// SAM Cache current?
-			rc = chdir(host);
+			rc = go_chdir(host);
 
 			if(rc) {
 				syslog(LOG_WARNING, "host '%s': %m", host);
@@ -712,3 +742,153 @@ int WRITE(int handle, char *whereto, int len)
 
 	return cnt;
 }
+
+
+// All directories are rooted
+int go_chdir(const char *path)
+{
+#ifdef NO_CHROOT
+	char fulldir[PATH_MAX + 1];
+
+	if(strlen(root_dir) + strlen(path) >= PATH_MAX) return ENAMETOOLONG;
+	sprintf(fulldir, "%s%s", root_dir, path);
+	return chdir(fulldir);
+#else
+	return chdir(path);
+#endif
+}
+
+
+#ifdef CGI
+int cgi(struct connection *conn, char *request)
+{
+	char *path, *p;
+	pid_t child;
+
+	// Malloc it so we can mess with it as much as we want
+	if((request = strdup(request)) == NULL) {
+		printf("Out of memory\n"); // SAM
+		http_error(conn, 500);
+		return 1;
+	}
+
+	// Request has already been preprocessed
+	// We are pointing past cgi-bin/
+	printf("CGI Request '%s'\n", request); // SAM
+
+	if((path = strchr(request, '/'))) {
+		*path++ = '\0';
+		p = path + strlen(path);
+		if(*p == '/') *p = '\0';
+	} else
+		path = "";
+
+	printf("Script '%s' Path '%s'\n", request, path); // SAM DBG
+
+	if(*request == '\0') {
+		printf("NO REQUEST\n");
+		http_error(conn, 403);
+		return 0;
+	}
+
+	if((child = fork()) == 0) {
+		// child
+		char *envp[10];
+		char env[1024];
+		int sock = SOCKET(conn);
+		char *server_str = "GoFish\r\n"; // SAM FIX LATER
+		int n, len;
+
+		// SAM set socket non-blocking?
+
+		dup2(sock, 1);
+		dup2(sock, 2);
+
+		strcpy(env, "PATH=/usr/bin:/bin:.");
+		envp[0] = strdup(env);
+		sprintf(env, "SCRIPT_NAME=%s", request);
+		envp[1] = strdup(env);
+		sprintf(env, "PATH_INFO=/%s", path);
+		envp[2] = strdup(env);
+		envp[3] = NULL;
+
+		// Since we are in a seperate process, safe
+		// to just write out blocking
+		// SAM We always need the header - viewcvs will
+		//     add the Content-type and \r\n
+		sprintf(env,
+				"HTTP/1.0 /cgi-bin/%.100s/%.100s\r\n"
+				"Server: %s",
+				request, path, server_str);
+		len = strlen(env);
+	again:
+		if((n = write(sock, env, len)) < 0) {
+			if(errno == EWOULDBLOCK) {
+				// SAM
+				len -= n;
+				goto again;
+			} else {
+				// SAM
+				FILE *fp = fopen("/tmp/gofish.out", "a");
+				fprintf(fp, "write failed: %s\n", strerror(errno));
+				fclose(fp);
+			}
+		}
+
+		if(execle(request, NULL, envp) < 0) {
+			// SAM
+			FILE *fp = fopen("/tmp/gofish.out", "a");
+			fprintf(fp, "exec failed: %s\n", strerror(errno));
+			fclose(fp);
+			// SAM
+
+			sprintf(env,
+					"<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\r\n"
+					"<html lang=\"en\">\n<head>\n"
+					"<title>/cgi-bin/%.100s</title>\r\n"
+					"</head>\n<body><h1>/cgi-bin/%.100s</h1>\r\n"
+					"<p>%.256s\r\n"
+					"</body></html>\r\n",
+					request, request, strerror(errno));
+			write(sock, env, strlen(env));
+		}
+
+		exit(1);
+	}
+
+	if(child == -1) {
+		perror("fork"); // SAM
+		http_error(conn, 403);
+		return 0;
+	}
+
+	conn->cgi = child;
+
+	return 0;
+}
+
+
+void reap_children()
+{
+	extern struct connection conns[];
+	struct connection *conn;
+	int i;
+
+	for(conn = conns, i = 0; i < MAX_REQUESTS; ++i, ++conn)
+		if(conn->cgi) {
+			int rc, status;
+
+			if((rc = waitpid(conn->cgi, &status, WNOHANG)) == conn->cgi) {
+				// done
+				// SAM SAM SAM FIX check status
+				printf("CGI done\n"); // SAM
+				close_connection(conn, 200);
+			} else if(rc == 0) {
+				printf("waitpid had nothing for us....\n"); // SAM
+			} else {
+				perror("waitpid");
+				close_connection(conn, 500);
+			}
+		}
+}
+#endif /* CGI */

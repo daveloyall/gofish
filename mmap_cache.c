@@ -30,7 +30,6 @@
 #include <syslog.h>
 #include <signal.h>
 #include <errno.h>
-#include <limits.h>
 #include <sys/stat.h>
 
 #include "gofish.h"

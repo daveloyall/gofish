@@ -29,7 +29,6 @@
 #include <syslog.h>
 #include <signal.h>
 #include <errno.h>
-#include <limits.h>
 #include <sys/time.h>
 #include <pwd.h>
 #include <grp.h>
@@ -48,7 +47,7 @@ int      n_connections = 0; // yes signed, I want to know if it goes -ve
 time_t   started;
 
 // Add an extra connection for error replies
-static struct connection conns[MAX_REQUESTS];
+struct connection conns[MAX_REQUESTS];
 
 #ifdef HAVE_POLL
 static struct pollfd ufds[MAX_REQUESTS];
@@ -96,6 +95,9 @@ static void sighandler(int signum)
 		// We get a SIGPIPE if the client closes the
 		// connection on us.
 		break;
+	case SIGCHLD:
+		// CGI finished
+		break;
 	default:
 		syslog(LOG_WARNING, "Got an unexpected %d signal\n", signum);
 		break;
@@ -128,6 +130,8 @@ static void cleanup()
 	free(pidfile);
 
 	mime_cleanup();
+
+	closelog();
 }
 
 
@@ -173,23 +177,22 @@ int main(int argc, char *argv[])
 static void
 setup_privs (void)
 {
-	struct passwd *pwd = NULL;
-
 	root_uid = getuid();
 
 	if(uid == (uid_t)-1 || gid == (uid_t)-1) {
-		pwd = getpwnam(user);
+		struct passwd *pwd = getpwnam(user);
 		if(!pwd) {
 			syslog(LOG_ERR, "No such user: `%s'.", user);
+			closelog();
 			exit(1);
 		}
 		if(uid == (uid_t)-1)
 			uid = pwd->pw_uid;
 		if(gid == (uid_t)-1)
 			gid = pwd->pw_gid;
-	}
-	if(pwd)
 		initgroups (pwd->pw_name, pwd->pw_gid);
+	}
+
 	setgid(gid);
 }
 
@@ -214,6 +217,7 @@ void gofish(char *name)
 	// Do this *before* chroot
 	log_open(logfile);
 
+#ifndef NO_CHROOT
 	if(chroot(root_dir)) {
 #ifdef ALLOW_NON_ROOT
 		if(errno == EPERM)
@@ -225,11 +229,13 @@ void gofish(char *name)
 			exit(1);
 		}
 	}
+#endif
 
 	signal(SIGHUP,  sighandler);
 	signal(SIGTERM, sighandler);
 	signal(SIGINT,  sighandler);
 	signal(SIGPIPE, sighandler);
+	signal(SIGCHLD, sighandler);
 
 	// connection socket
 	if((csock = listen_socket(port)) < 0) {
@@ -279,7 +285,12 @@ void start_polling(int csock)
 	while(1) {
 		timeout = n_connections ? (POLL_TIMEOUT * 1000) : -1;
 		if((n = poll(ufds, npoll, timeout)) < 0) {
-			if(errno != EINTR)
+			if(errno == EINTR) {
+#ifdef CGI
+				printf("EINTR\n");
+				reap_children();
+#endif
+			} else
 				syslog(LOG_WARNING, "poll: %m");
 			continue;
 		}
@@ -299,7 +310,8 @@ void start_polling(int csock)
 			--n;
 		}
 
-		for(i = 1; n >= 0 && i < npoll; ++i)
+		// SAM was n >= 0... why?
+		for(i = 1; n > 0 && i < npoll; ++i)
 			if(ufds[i].revents & POLLIN) {
 				read_request(&conns[i]);
 				--n;
@@ -634,6 +646,10 @@ void close_connection(struct connection *conn, int status)
 	conn->status = 200;
 
 	memset(conn->iovs, 0, sizeof(conn->iovs));
+
+#ifdef CGI
+	conn->cgi = 0;
+#endif
 }
 
 

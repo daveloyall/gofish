@@ -47,6 +47,7 @@ int   icon_height   = ICON_HEIGHT;
 int   virtual_hosts = 0;
 int   combined_log  = 0;
 int   is_gopher     = 1;
+int   htmlizer      = 1;
 
 
 extern void set_mime_file(char *fname);
@@ -151,7 +152,9 @@ int read_config(char *fname)
 				extern int mmap_cache_size;
 				must_strtol(p, &mmap_cache_size);
 #endif
-			} else
+			} else if(strcmp(line, "htmlize") == 0)
+				must_strtol(p, &htmlizer);
+			else
 				printf("Unknown config '%s'\n", line);
 		}
 
@@ -181,6 +184,11 @@ int read_config(char *fname)
 	if(root_dir == NULL) root_dir = must_strdup(GOPHER_ROOT);
 	if(logfile == NULL)  logfile  = must_strdup(GOPHER_LOGFILE);
 	if(pidfile == NULL)  pidfile  = must_strdup(GOPHER_PIDFILE);
+
+	if(strlen(root_dir) >= PATH_MAX) {
+		printf("Root directory too long\n");
+		exit(1);
+	}
 
 	return 0;
 }

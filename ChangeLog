@@ -1,3 +1,11 @@
+Changes for 0.29
+
+    GoFish
+	* simplified generated html
+	* generated html now passes Bobby
+	* icons now transparent and 24 wide
+	* added htmlize config variable
+
 Changes for 0.28
 
     GoFish

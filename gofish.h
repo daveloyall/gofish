@@ -29,6 +29,10 @@
 #include <time.h>
 #include <sys/uio.h>
 
+#ifdef HAVE_LIMITS_H
+#include <limits.h>
+#endif
+
 #define MAX_HOSTNAME	65
 #define MAX_LINE		1280
 #define MAX_REQUESTS	25
@@ -56,7 +60,7 @@
 #define GOPHER_PORT		70
 
 // Supplied icons are this size
-#define ICON_WIDTH		20
+#define ICON_WIDTH		24
 #define ICON_HEIGHT		23
 
 
@@ -108,6 +112,9 @@ struct connection {
 	char *html_header;
 	char *html_trailer;
 	char *outname;
+#ifdef CGI
+	pid_t cgi;
+#endif
 };
 
 
@@ -145,6 +152,7 @@ extern int   icon_height;
 extern int   virtual_hosts;
 extern int   combined_log;
 extern int   is_gopher;
+extern int   htmlizer;
 
 int read_config(char *fname);
 char *must_strdup(char *str);
@@ -155,6 +163,10 @@ void http_cleanup(void);
 int http_get(struct connection *conn);
 int http_send_response(struct connection *conn);
 int http_error(struct connection *conn, int status);
+#ifdef CGI
+void reap_children(void);
+#endif
+
 
 // exported from mime.c
 void mime_init(void);
