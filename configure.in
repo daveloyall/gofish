@@ -35,9 +35,13 @@ AC_FUNC_STRFTIME
 AC_CHECK_FUNCS(gethostname select socket strdup strerror strstr strtol uname)
 AC_CHECK_FUNCS(poll sendfile)
 
-dnl Make sure this mimics the Linux style sendfile
+dnl Check the type of sendfile
+dnl I am not completely happy with this, since
+dnl Linux passes the BSD test. We are *really* only
+dnl testing the header files.
 if test "$ac_cv_func_sendfile" = "yes"; then
   AC_MSG_CHECKING([sendfile type])
+  sendfile_type=none
   AC_TRY_LINK([
 #include <sys/sendfile.h>
   ],
@@ -48,9 +52,25 @@ if test "$ac_cv_func_sendfile" = "yes"; then
 
   sendfile(out_fd, in_fd, &offset, count);
   ],
-  [AC_DEFINE(HAVE_LINUX_SENDFILE)],
-  [eval "ac_cv_func_sendfile=no"])
-  AC_MSG_RESULT([$ac_cv_func_sendfile])
+  [AC_DEFINE(HAVE_LINUX_SENDFILE) sendfile_type=Linux],
+  [
+  AC_TRY_LINK([
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+  ],
+  [
+  int fd, s;
+  off_t offset, sbytes;
+  size_t nbytes;
+  struct sf_hdtr *hdtr;
+
+  sendfile(fd, s, offset, nbytes, hdtr, &sbytes, 0);
+  ],
+  [AC_DEFINE(HAVE_BSD_SENDFILE) sendfile_type=BSD],
+  [])
+  ])
+  AC_MSG_RESULT([$sendfile_type])
 fi
 
 AC_MSG_CHECKING([http support])

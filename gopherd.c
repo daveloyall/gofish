@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.3 $ $Date: 2002/08/25 01:48:32 $
+ * $Revision: 1.4 $ $Date: 2002/08/26 02:35:42 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -29,6 +29,7 @@
 #include <syslog.h>
 #include <signal.h>
 #include <errno.h>
+#include <limits.h>
 #include <sys/time.h>
 
 #include "gopherd.h"
@@ -41,7 +42,6 @@
 #ifdef HAVE_LINUX_SENDFILE
 #include <sys/sendfile.h>
 #endif
-
 
 int verbose = 0;
 
@@ -144,11 +144,12 @@ void gopherd(void)
 	setgid(gid);
 
 	if(chroot(root_dir)) {
-		if(errno == EPERM) {
-			printf("You are not root!\n");
-			exit(1);
-		}
-		else {
+#ifdef ALLOW_NON_ROOT
+		if(errno == EPERM)
+			printf("WARNING: You are not running in a chroot environment!\n");
+		else
+#endif
+		{
 			perror("chroot");
 			exit(1);
 		}
@@ -284,7 +285,7 @@ void start_selecting(int csock)
 }
 #endif
 
-#if !defined(HAVE_LINUX_SENDFILE) && !defined(HAVE_MMAP)
+#if !defined(HAVE_SENDFILE) && !defined(HAVE_MMAP)
 #define PROT_READ	0
 #define MAP_SHARED	0
 
@@ -314,33 +315,84 @@ int munmap(void *start, size_t length)
 
 #endif
 
+#ifdef ALLOW_NON_ROOT
+int checkpath(char *path)
+{
+#if 0
+	// This does not work in a chroot environment
+	char full[PATH_MAX + 2];
+	char real[PATH_MAX + 2];
+	int  len = strlen(root_dir);
+
+	strcpy(full, root_dir);
+	strcat(full, "/");
+	strncat(full, path, PATH_MAX - len);
+	full[PATH_MAX] = '\0';
+
+	if(!realpath(full, real)) {
+		return 1;
+	}
+
+	if(strncmp(real, root_dir, len)) {
+		errno = EACCES;
+		return -1;
+	}
+#else
+	// A .. at the end is safe since it will never specify a file,
+	// only a directory.
+	if(strncmp(path, "../", 3) == 0 || (int)strstr(path, "/../")) {
+		errno = EACCES;
+		return -1;
+	}
+#endif
+
+	return 0;
+}
+#endif
+
 
 // This handles parsing the name and opening the file
+// We allow the following /?[019]/?<path> || nothing
 static int smart_open(char *name)
 {
-	if(*name == '\0')
-		return open(".cache", O_RDONLY);
+	char type;
 
-	if(*name == '1') {
+	if(*name == '/') ++name;
+	type = *name++;
+	if(type && *name == '/') ++name;
+
+#ifdef ALLOW_NON_ROOT
+	if(checkpath(name)) return -1;
+#endif
+
+	switch(type) {
+	case '\0':
+		return open(".cache", O_RDONLY);
+	case '0':
+	case '9':
+		return open(name, O_RDONLY);
+	case '1':
+	{
 		char dirname[MAX_LINE + 10], *p;
 
 		strcpy(dirname, name);
 		p = dirname + strlen(dirname);
 		if(*(p - 1) != '/') *p++ = '/';
 		strcpy(p, ".cache");
-		return open(dirname + 2, O_RDONLY);
+		return open(dirname, O_RDONLY);
 	}
-
-	return open(name + 2, O_RDONLY);
+	default:
+		errno = EINVAL;
+		return -1;
+	}
 }
-
 
 
 void close_request(struct connection *conn)
 {
 	if(verbose) printf("Close request\n");
 
-#ifdef HAVE_LINUX_SENDFILE
+#ifdef HAVE_SENDFILE
 	if(conn->fd) {
 		close(conn->fd);
 		conn->fd = 0;
@@ -377,9 +429,9 @@ void close_request(struct connection *conn)
 	}
 
 #ifdef USE_HTTP
-	if(conn->hdr_str) {
-		free(conn->hdr_str);
-		conn->hdr_str = NULL;
+	if(conn->hdr) {
+		free(conn->hdr);
+		conn->hdr = NULL;
 	}
 	if(conn->outname) {
 		if(unlink(conn->outname))
@@ -528,7 +580,7 @@ int read_request(struct connection *conn)
 		}
 	}
 
-#ifdef HAVE_LINUX_SENDFILE
+#ifdef HAVE_SENDFILE
 	conn->fd = fd;
 
 	conn->len = lseek(fd, -1, SEEK_END) + 1;
@@ -569,9 +621,42 @@ int read_request(struct connection *conn)
 int write_request(struct connection *conn)
 {
 	int n;
+#ifdef HAVE_BSD_SENDFILE
+	/* You must pass in an address, even if all 0s */
+	struct sf_hdtr hdr;
 
+	memset(&hdr, 0, sizeof(hdr));
+	if(conn->hdr) {
+		hdr.headers = conn->hdr;
+		hdr.hdr_cnt = 1;
+	}
+
+	if(sendfile(conn->fd, SOCKET(conn), conn->offset, conn->len - conn->offset,
+				&hdr, &n, 0) == 0 && n > 0)
+		// success
+		conn->offset += n;
+	else if(errno == EAGAIN && n > 0) {
+		// success - we just need to poll again
+		if(conn->hdr) {
+			if(n >= conn->hdr->iov_len) {
+				conn->offset += n - conn->hdr->iov_len;
+				free(conn->hdr);
+				conn->hdr = NULL;
+			}
+			else {
+				// This should never happen
+				conn->hdr->iov_base += n;
+				conn->hdr->iov_len  -= n;
+			}
+		}
+		else
+			conn->offset += n;
+	} else
+		// failure
+		n = -1;
+#else // !USE_BSD_SENDFILE
 #ifdef USE_HTTP
-	if(conn->hdr_str)
+	if(conn->hdr)
 		return http_send_response(conn);
 #endif
 
@@ -583,6 +668,7 @@ int write_request(struct connection *conn)
 			  conn->len - conn->offset);
 	conn->offset += n;
 #endif
+#endif // USE_BSD_SENDFILE
 
 	if(n <= 0) {
 		send_errno(SOCKET(conn), conn->cmd, errno);
@@ -595,7 +681,7 @@ int write_request(struct connection *conn)
 		if(*conn->cmd != '9') {
 			int neednl;
 
-#ifdef HAVE_LINUX_SENDFILE
+#ifdef HAVE_SENDFILE
 			neednl = conn->neednl;
 #else
 			neednl = conn->buf[conn->len - 1] != '\n';

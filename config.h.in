@@ -39,6 +39,9 @@
 /* Linux style sendfile */
 #undef HAVE_LINUX_SENDFILE
 
+/* BSD style sendfile */
+#undef HAVE_BSD_SENDFILE
+
 /* Define if you have the gethostname function.  */
 #undef HAVE_GETHOSTNAME
 

@@ -1,7 +1,7 @@
 /*
  * gopherd.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.3 $ $Date: 2002/08/25 01:48:32 $
+ * $Revision: 1.4 $ $Date: 2002/08/26 02:35:42 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -26,6 +26,7 @@
 #ifdef HAVE_POLL
 #include <poll.h>
 #endif
+#include <sys/uio.h>
 
 
 #define MAX_HOSTNAME	65
@@ -62,7 +63,7 @@ struct connection {
 #endif
 	unsigned addr;
 	char *cmd;
-#ifdef HAVE_LINUX_SENDFILE
+#ifdef HAVE_SENDFILE
 	int fd;
 	int neednl;
 #else
@@ -70,10 +71,8 @@ struct connection {
 #endif
 	off_t offset;
 	size_t len;
-#ifdef USE_HTTP
-	char *hdr_str;
-	int   hdr_offset;
-	int   hdr_len;
+#if defined(USE_HTTP) || defined(USE_BSD_SENDFILE)
+	struct iovec *hdr;
 	char *outname;
 	int   status;
 #endif
@@ -82,6 +81,7 @@ struct connection {
 
 // exported from gopherd.c
 extern void close_request(struct connection *conn);
+int checkpath(char *path);
 
 // exported from log.c
 extern int  log_open(char *log_name);

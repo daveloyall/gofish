@@ -75,10 +75,10 @@ static void unquote(char *str)
 	}
 }
 
-
 static int http_build_response(struct connection *conn, int status, char *type)
 {
 	char str[500], *p;
+	int len;
 
 	strcpy(str, "HTTP/1.1 ");
 	switch(status) {
@@ -97,11 +97,16 @@ static int http_build_response(struct connection *conn, int status, char *type)
 	p += strlen(p);
 	sprintf(p, "Content-Length: %d\r\n\r\n", conn->len);
 
-	conn->hdr_str = strdup(str);
-	conn->hdr_offset = 0;
-	conn->hdr_len = strlen(conn->hdr_str);
+	len = strlen(str);
+	if((conn->hdr = malloc(sizeof(struct iovec) + len + 1)) == NULL)
+		return 1;
 
-	return conn->hdr_str ? 0 : 1;
+	p = (char*)(conn->hdr) + sizeof(struct iovec);
+	strcpy(p, str);
+	conn->hdr->iov_base = p;
+	conn->hdr->iov_len  = len;
+
+	return 0;
 }
 
 
@@ -110,9 +115,7 @@ int http_send_response(struct connection *conn)
 {
 	int n;
 
-	n = write(SOCKET(conn),
-			  conn->hdr_str + conn->hdr_offset,
-			  conn->hdr_len - conn->hdr_offset);
+	n = writev(SOCKET(conn), conn->hdr, 1);
 
 	if(n <= 0) {
 		send_errno(SOCKET(conn), conn->cmd, errno);
@@ -121,13 +124,15 @@ int http_send_response(struct connection *conn)
 		return 1;
 	}
 
-	conn->hdr_offset += n;
-	if(conn->hdr_offset >= conn->hdr_len) {
-		free(conn->hdr_str);
-		conn->hdr_str = NULL;
+	conn->hdr->iov_base += n;
+	conn->hdr->iov_len  -= n;
+	if(conn->hdr->iov_len <= 0) {
+		free(conn->hdr);
+		conn->hdr = NULL;
 
 		if(conn->len == 0) {
-			log_hit(conn->addr, conn->cmd, conn->status, conn->len);
+			// This is an error status - no data to send
+			log_hit(conn->addr, conn->cmd, conn->status, 0);
 			close_request(conn);
 		}
 
@@ -383,6 +388,10 @@ static int smart_open(char *name, char type)
 
 	if(*name == '\0')
 		return open(".cache", O_RDONLY);
+
+#ifdef ALLOW_NON_ROOT
+	if(checkpath(name)) return -1;
+#endif
 
 	if(type == '1') {
 		char dirname[MAX_LINE + 10], *p;
