@@ -1,7 +1,7 @@
 /*
- * catfish.c - a gopher proxy server for Opera
+ * goproxy.c - a gopher proxy server for Opera
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.10 $ $Date: 2002/10/15 03:16:57 $
+ * $Revision: 1.1 $ $Date: 2002/10/18 04:20:36 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -406,3 +406,9 @@ unsigned gethostaddr(char *hostname)
 
 	return *(unsigned *)host->h_addr_list[0];
 }
+
+/*
+ * Local Variables:
+ * compile-command: "gcc -O3 -Wall goproxy.c socket.o -o goproxy"
+ * End:
+ */
