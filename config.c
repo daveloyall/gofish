@@ -1,7 +1,7 @@
 /*
  * config.c - read the config file for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.1 $ $Date: 2002/08/23 16:03:15 $
+ * $Revision: 1.2 $ $Date: 2002/08/24 05:04:31 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,13 +25,11 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <fcntl.h>
-#include <malloc.h>
 #include <assert.h>
 #include <syslog.h>
 #include <signal.h>
 #include <errno.h>
 #include <sys/time.h>
-#include <sys/poll.h>
 
 #include "gopherd.h"
 
@@ -110,9 +108,9 @@ int read_config(char *fname)
 		else if(strcmp(line, "port") == 0)
 			must_strtol(p, &port);
 		else if(strcmp(line, "uid") == 0)
-			must_strtol(p, &uid);
+			must_strtol(p, (int*)&uid);
 		else if(strcmp(line, "gid") == 0)
-			must_strtol(p, &gid);
+			must_strtol(p, (int*)&gid);
 		else if(strcmp(line, "no_local") == 0)
 			must_strtol(p, &ignore_local);
 		else if(strcmp(line, "host") == 0)
@@ -124,12 +122,12 @@ int read_config(char *fname)
 	fclose(fp);
 
 	// Make sure hostname is set to something
+	// Make sure it is malloced
 	if(*hostname == '\0') {
 		if(gethostname(line, sizeof(line) - 1)) {
 			puts("Warning: setting hostname to localhost.\n"
 				 "This is probably not what you want.");
-			hostname = "localhost";
-			return 1;
+			strcpy(line, "localhost");
 		}
 		if((hostname = strdup(line)) == NULL) {
 			printf("Out of memory\n");

@@ -1,7 +1,7 @@
 /*
  * log.c - log file output for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.1 $ $Date: 2002/08/23 16:03:15 $
+ * $Revision: 1.2 $ $Date: 2002/08/24 05:04:31 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -70,13 +70,13 @@ void log_close()
 void send_errno(int sock, char *name, int errnum)
 {
 	char error[1024];
-	char errstr[100];
+
 	if(*name == '\0')
-		sprintf(error, "3'<root>' %s\terror.host\t%d\r\n",
-				strerror_r(errnum, errstr, sizeof(errstr)), errnum);
+		sprintf(error, "3'<root>' %.500s\tfake\t%d\r\n",
+				strerror(errnum), errnum);
 	else
-		sprintf(error, "3'%.500s' %s\terror.host\t%d\r\n",
-				name, strerror_r(errnum, errstr, sizeof(errstr)), errnum);
+		sprintf(error, "3'%.500s' %.500s\tfake\t%d\r\n",
+				name, strerror(errnum), errnum);
 	write(sock, error, strlen(error));
 }
 

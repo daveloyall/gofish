@@ -1,6 +1,6 @@
 Summary: A Gopher Server
 Name: gofish
-Version: 0.8
+Version: 0.9
 Release: 1
 Copyright: GPL
 Group: Networking/Daemons
@@ -51,6 +51,11 @@ install init-gofish $RPM_BUILD_ROOT/etc/rc.d/init.d/gopherd
 
 mkdir -p $RPM_BUILD_ROOT/usr/share/gofish/icons
 install -m644 icons/*.gif $RPM_BUILD_ROOT/usr/share/gofish/icons
+install -m644 _gopher+ $RPM_BUILD_ROOT/usr/share/gofish/.gopher+
+
+mkdir -p $RPM_BUILD_ROOT/var/lib/gopherd
+install -m644 icons/*.gif $RPM_BUILD_ROOT/var/lib/gopherd/icons
+install -m644 _gopher+ $RPM_BUILD_ROOT/var/lib/gopherd/.gopher+
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -67,6 +72,7 @@ rm -rf $RPM_BUILD_ROOT
 /usr/man/man1/*
 /usr/man/man5/*
 /usr/share/gofish/icons/*
+/usr/share/gofish/.gopher+
 
 %changelog
 * Thu Aug 22 2002 Sean MacLennan <seanm@seanm.ca>

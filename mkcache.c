@@ -26,13 +26,10 @@
 #include <limits.h>
 #include <errno.h>
 #include <ctype.h>
+#include <sys/stat.h>
 
 #include "gopherd.h"
 
-
-#ifndef DT_DIR
-#error readdir does not support d_type
-#endif
 
 int verbose = 0;
 int recurse = 0;
@@ -75,8 +72,8 @@ struct entry {
 	char ftype;
 };
 
-int read_dir(struct entry **entries, char *path, int toplevel);
-int output_dir(struct entry *entries, int n, char *path, int toplevel);
+int read_dir(struct entry **entries, char *path, int level);
+int output_dir(struct entry *entries, int n, char *path, int level);
 
 
 /* 0 */
@@ -124,17 +121,26 @@ int dirs_type_compare(const void *a, const void *b)
 }
 
 
+static void free_entries(struct entry *entries, int nentries)
+{
+	struct entry *entry;
+	int i;
+
+	for(entry = entries, i = 0; i < nentries; ++i, ++entry)
+		free(entry->name);
+	free(entries);
+}
+
 
 // Returns the number of entries in the .cache file
-int process_dir(char *path)
+int process_dir(char *path, int level)
 {
-	int toplevel = strcmp(path, ".") == 0;
-	int nfiles = 0;
+	int nfiles;
 	struct entry *entries = NULL;
 
-	if(verbose) printf("Processing %s\n", path);
+	if(verbose) printf("Processing [%d] %s\n", level, path);
 
-	if((nfiles = read_dir(&entries, path, toplevel)) == 0)
+	if((nfiles = read_dir(&entries, path, level)) == 0)
 		return 0;
 
 	switch(sorttype) {
@@ -152,15 +158,15 @@ int process_dir(char *path)
 		break;
 	}
 
-	output_dir(entries, nfiles, path, toplevel);
+	output_dir(entries, nfiles, path, level);
 
-	free(entries);
+	free_entries(entries, nfiles);
 
 	return nfiles;
 }
 
 
-int output_dir(struct entry *entries, int n, char *path, int toplevel)
+int output_dir(struct entry *entries, int n, char *path, int level)
 {
 	FILE *fp;
 	char fname[PATH_MAX];
@@ -176,7 +182,7 @@ int output_dir(struct entry *entries, int n, char *path, int toplevel)
 	}
 
 	for(e = entries, i = 0; i < n; ++i, ++e)
-		if(toplevel)
+		if(level == 0)
 			fprintf(fp, "%c%s\t%c/%s\t%s\t%d\n",
 					e->type, e->name, e->ftype, e->name, hostname, port);
 		else
@@ -222,7 +228,33 @@ void add_entry(struct entry **entries, int n, char *name, int isdir)
 	entry->ftype = entry->type = '0';
 }
 
-int read_dir(struct entry **entries, char *path, int toplevel)
+
+static int isdir(struct dirent *ent, char *path, int len)
+{
+#ifdef DT_DIR
+	return ent->d_type == DT_DIR;
+#else
+	struct stat sbuf;
+	char *full;
+
+	// +2 for / and \0
+	if(!(full = malloc(len + strlen(ent->d_name) + 2))) {
+		printf("Out of memory\n");
+		exit(1);
+	}
+	sprintf(full, "%s/%s", path, ent->d_name);
+	if(stat(full, &sbuf)) {
+		perror(full);
+		exit(1);
+	}
+	free(full);
+
+	return S_ISDIR(sbuf.st_mode);
+#endif
+}
+
+
+int read_dir(struct entry **entries, char *path, int level)
 {
 	DIR *dir;
 	struct dirent *ent;
@@ -237,31 +269,33 @@ int read_dir(struct entry **entries, char *path, int toplevel)
 	while((ent = readdir(dir))) {
 		if(*ent->d_name == '.') continue;
 
-		if(verbose > 1) printf("  %s\n", ent->d_name);
-
-		if(ent->d_type == DT_DIR) {
+		if(isdir(ent, path, len)) {
 			add_entry(entries, nfiles, ent->d_name, 1);
 			++nfiles;
 
 			if(recurse) {
 				char *full;
 
-				if(!(full = malloc(len + strlen(ent->d_name) + 1))) {
+				// note: +2 for / and \0
+				if(!(full = malloc(len + strlen(ent->d_name) + 2))) {
 					printf("Out of memory\n");
 					exit(1);
 				}
-				if(toplevel)
+				if(level == 0)
 					strcpy(full, ent->d_name);
 				else
 					sprintf(full, "%s/%s", path, ent->d_name);
-				process_dir(full);
+				process_dir(full, level + 1);
 				free(full);
 			}
+			else if(verbose > 1) printf("  %s/\n", ent->d_name);
 		} else {
+			if(verbose > 1) printf("  %s\n", ent->d_name);
 			add_entry(entries, nfiles, ent->d_name, 0);
 			++nfiles;
 		}
 	}
+
 	closedir(dir);
 
 	return nfiles;
@@ -274,6 +308,7 @@ int main(int argc, char *argv[])
 	char *config = GOPHER_CONFIG;
 	char full[PATH_MAX];
 	int c;
+	int level;
 
 	while((c = getopt(argc, argv, "c:rs:v")) != -1)
 		switch(c) {
@@ -330,7 +365,13 @@ int main(int argc, char *argv[])
 		printf("hostname '%s' port '%d'\nbase '%s' dir '%s'\n",
 			   hostname, port, root_dir, dir);
 
-	process_dir(dir);
+	level = strcmp(dir, ".") ? 1 : 0;
+	process_dir(dir, level);
+
+	// This is for valgrind and will not be 100% correct if you
+	// have anything other than a stock gofish.conf
+	free(root_dir);
+	free(hostname);
 
 	return 0;
 }

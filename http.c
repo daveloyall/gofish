@@ -27,7 +27,6 @@
 #include <errno.h>
 #include <ctype.h>
 #include <sys/utsname.h>
-#include <sys/sendfile.h>
 
 #include "gopherd.h"
 #include "version.h"
@@ -110,12 +109,12 @@ int http_send_response(struct connection *conn)
 {
 	int n;
 
-	n = write(conn->ufd->fd,
+	n = write(SOCKET(conn),
 			  conn->hdr_str + conn->hdr_offset,
 			  conn->hdr_len - conn->hdr_offset);
 
 	if(n <= 0) {
-		send_errno(conn->ufd->fd, conn->cmd, errno);
+		send_errno(SOCKET(conn), conn->cmd, errno);
 		log_hit(conn->addr, conn->cmd, 500, 0);
 		close_request(conn);
 		return 1;

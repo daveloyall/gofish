@@ -1,7 +1,7 @@
 /*
  * gopherd.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.1 $ $Date: 2002/08/23 16:03:15 $
+ * $Revision: 1.2 $ $Date: 2002/08/24 05:04:31 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -21,7 +21,9 @@
 #ifndef _GOFISH_H_
 #define _GOFISH_H_
 
-#include <sys/poll.h>
+#ifdef HAVE_POLL
+#include <poll.h>
+#endif
 
 
 #define MAX_HOSTNAME	65
@@ -49,7 +51,13 @@
 
 
 struct connection {
+#ifdef HAVE_POLL
 	struct pollfd *ufd;
+#define SOCKET(c)	((c)->ufd->fd)
+#else
+	int sock;
+#define SOCKET(c)	((c)->sock)
+#endif
 	unsigned addr;
 	char *cmd;
 #ifdef USE_SENDFILE

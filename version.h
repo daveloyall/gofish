@@ -1,1 +1,1 @@
-#define GOFISH_VERSION "0.8"
+#define GOFISH_VERSION "0.9"

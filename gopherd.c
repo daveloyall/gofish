@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.1 $ $Date: 2002/08/23 16:03:15 $
+ * $Revision: 1.2 $ $Date: 2002/08/24 05:04:31 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -25,7 +25,6 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <fcntl.h>
-#include <malloc.h>
 #include <assert.h>
 #include <syslog.h>
 #include <signal.h>
@@ -48,8 +47,18 @@ int verbose = 0;
 
 struct connection conns[MAX_REQUESTS];
 
-struct pollfd ufds[MAX_REQUESTS];
-int npoll;
+#ifdef HAVE_POLL
+static struct pollfd ufds[MAX_REQUESTS];
+static int npoll;
+
+static void start_polling(int csock);
+#else
+static fd_set readfds, writefds;
+static int nfds;
+
+static void start_selecting(int csock);
+#endif
+
 
 uid_t real_uid;
 
@@ -84,7 +93,7 @@ void sighandler(int signum)
 
 int main(int argc, char *argv[])
 {
-	char *config;
+	char *config = GOPHER_CONFIG;
 	pid_t pid;
 	int c, daemon = 0;
 
@@ -94,11 +103,9 @@ int main(int argc, char *argv[])
 		case 'd': daemon = 1; break;
 		case 'v': ++verbose; break;
 		default:
-			printf("usage: %s [-dv] [config]\n", *argv);
+			printf("usage: %s [-dv] [-c config]\n", *argv);
 			exit(1);
 		}
-
-	config = optind < argc ? argv[optind] : GOPHER_CONFIG;
 
 	if(read_config(config)) exit(1);
 
@@ -120,8 +127,6 @@ int main(int argc, char *argv[])
 void gopherd(void)
 {
 	int csock;
-	int i;
-	int n;
 
 	openlog("gopherd", LOG_CONS, LOG_DAEMON);
 	syslog(LOG_INFO, "GoFish " GOFISH_VERSION " starting.");
@@ -135,13 +140,19 @@ void gopherd(void)
 		exit(1);
 	}
 
-	if(chroot(root_dir)) {
-		perror("chroot");
-		exit(1);
-	}
-
 	real_uid = getuid();
 	setgid(gid);
+
+	if(chroot(root_dir)) {
+		if(errno == EPERM) {
+			printf("You are not root!\n");
+			exit(1);
+		}
+		else {
+			perror("chroot");
+			exit(1);
+		}
+	}
 
 	signal(SIGHUP,  sighandler);
 	signal(SIGTERM, sighandler);
@@ -155,8 +166,24 @@ void gopherd(void)
 		exit(1);
 	}
 
-	memset(ufds, 0, sizeof(ufds));
 	memset(conns, 0, sizeof(conns));
+
+	// These never return
+#ifdef HAVE_POLL
+	start_polling(csock);
+#else
+	start_selecting(csock);
+#endif
+}
+
+
+#ifdef HAVE_POLL
+void start_polling(int csock)
+{
+	int i;
+	int n;
+
+	memset(ufds, 0, sizeof(ufds));
 
 	for(i = 0; i < MAX_REQUESTS; ++i)
 		conns[i].ufd = &ufds[i];
@@ -164,6 +191,7 @@ void gopherd(void)
 	ufds[0].fd = csock;
 	ufds[0].events = POLLIN;
 	npoll = 1;
+
 	while(1) {
 		if((n = poll(ufds, npoll, -1)) <= 0) {
 			syslog(LOG_WARNING, "poll: %m");
@@ -195,6 +223,66 @@ void gopherd(void)
 	}
 }
 
+#else
+static inline struct connection *find_conn(fd)
+{
+	int i;
+
+	for(i = 0; i < MAX_REQUESTS; ++i)
+		if(conns[i].sock == fd)
+			return &conns[i];
+
+	return NULL;
+}
+
+
+void start_selecting(int csock)
+{
+	int n, fd;
+	struct connection *conn;
+	fd_set cur_reads, cur_writes;
+
+	FD_ZERO(&readfds);
+	FD_ZERO(&writefds);
+
+	FD_SET(csock, &readfds);
+	nfds = csock + 1;
+
+	while(1) {
+		memcpy(&cur_reads,  &readfds, sizeof(fd_set));
+		memcpy(&cur_writes, &writefds, sizeof(fd_set));
+
+		if((n = select(nfds, &cur_reads, &cur_writes, NULL, NULL)) <= 0) {
+			syslog(LOG_WARNING, "select: %m");
+			continue;
+		}
+
+		if(FD_ISSET(csock, &cur_reads)) {
+			--n;
+			FD_CLR(csock, &cur_reads);
+			new_connection(csock);
+		}
+
+		for(fd = 0; n > 0 && fd < nfds; ++fd) {
+			if(FD_ISSET(fd, &cur_reads)) {
+				--n;
+				if((conn = find_conn(fd)))
+					read_request(conn);
+				else
+					syslog(LOG_DEBUG, "No connection found for read fd");
+			} else if(FD_ISSET(fd, &cur_writes)) {
+				--n;
+				if((conn = find_conn(fd)))
+					write_request(conn);
+					else
+						syslog(LOG_DEBUG, "No connection found for write fd");
+			}
+		}
+
+		if(n > 0) syslog(LOG_DEBUG, "Not all requests processed");
+	}
+}
+#endif
 
 #if !defined(USE_SENDFILE) && !defined(USE_MMAP)
 #define PROT_READ	0
@@ -264,10 +352,24 @@ void close_request(struct connection *conn)
 	}
 #endif
 
+#ifdef HAVE_POLL
 	if(conn->ufd->fd) {
 		close(conn->ufd->fd);
 		conn->ufd->fd = 0;
 	}
+	conn->ufd->events = 0;
+	conn->ufd->revents = 0;
+
+	while(npoll > 1 && ufds[npoll - 1].fd == 0) --npoll;
+#else
+	if(conn->sock) {
+		close(conn->sock);
+		FD_CLR(conn->sock, &readfds);
+		FD_CLR(conn->sock, &writefds);
+		// SAM decrement nfds?
+		conn->sock = 0;
+	}
+#endif
 
 	if(conn->cmd) {
 		free(conn->cmd);
@@ -287,12 +389,7 @@ void close_request(struct connection *conn)
 	}
 #endif
 
-	conn->ufd->events = 0;
-	conn->ufd->revents = 0;
-
 	conn->len = conn->offset = 0;
-
-	while(npoll > 1 && ufds[npoll - 1].fd == 0) --npoll;
 }
 
 
@@ -323,6 +420,7 @@ int new_connection(int csock)
 	}
 
 	// Find a free connection
+#ifdef HAVE_POLL
 	for(i = 1; i < MAX_REQUESTS; ++i)
 		if(ufds[i].fd == 0) {
 			ufds[i].fd = sock;
@@ -338,6 +436,23 @@ int new_connection(int csock)
 				printf("Accepted connection %d from %s\n", i, ntoa(addr));
 			return 0;
 		}
+#else
+	for(i = 1; i < MAX_REQUESTS; ++i)
+		if(conns[i].sock == 0) {
+			conns[i].sock = sock;
+			FD_SET(sock, &readfds);
+
+			conns[i].cmd = cmd;
+			conns[i].offset = 0;
+			conns[i].len = MAX_LINE;
+
+			conns[i].addr = addr;
+			if(sock + 1 > nfds) nfds = sock + 1;
+			if(verbose)
+				printf("Accepted connection %d from %s\n", i, ntoa(addr));
+			return 0;
+		}
+#endif
 
 	syslog(LOG_WARNING, "Too many requests.");
 
@@ -351,12 +466,12 @@ int read_request(struct connection *conn)
 	int n;
 	char *p;
 
-	n = read(conn->ufd->fd, conn->cmd + conn->offset, conn->len - conn->offset);
+	n = read(SOCKET(conn), conn->cmd + conn->offset, conn->len - conn->offset);
 
 	if(n <= 0) {
 		// If we can't read, we probably can't write ....
 		syslog(LOG_ERR, "Read error %m");
-		send_error(conn->ufd->fd, "Unable to read request");
+		send_error(SOCKET(conn), "Unable to read request");
 		log_hit(conn->addr, conn->cmd, 414, 0);
 		close_request(conn);
 		return 1;
@@ -371,7 +486,7 @@ int read_request(struct connection *conn)
 	if((p = strchr(conn->cmd, '\n')) == 0) {
 		if(conn->offset >= conn->len) {
 			syslog(LOG_ERR, "Line too long.");
-			send_error(conn->ufd->fd, "Line too long");
+			send_error(SOCKET(conn), "Line too long");
 			log_hit(conn->addr, conn->cmd, 414, 0);
 			close_request(conn);
 			return 1;
@@ -399,7 +514,7 @@ int read_request(struct connection *conn)
 		   strncmp(conn->cmd, "HEAD ", 5) == 0) {
 			// Someone did an http://host:70/
 			if((fd = http_get(conn)) < 0) {
-				send_errno(conn->ufd->fd, conn->cmd, errno);
+				send_errno(SOCKET(conn), conn->cmd, errno);
 				log_hit(conn->addr, conn->cmd + 4, 404, 0);
 				close_request(conn);
 				return 1;
@@ -407,7 +522,7 @@ int read_request(struct connection *conn)
 		}
 		else {
 			log_hit(conn->addr, conn->cmd, 404, 0);
-			send_errno(conn->ufd->fd, conn->cmd, errno);
+			send_errno(SOCKET(conn), conn->cmd, errno);
 			close_request(conn);
 			return 1;
 		}
@@ -431,7 +546,7 @@ int read_request(struct connection *conn)
 
 	if(conn->buf == NULL) {
 		syslog(LOG_ERR, "mmap: %m");
-		send_error(conn->ufd->fd, "Out of resources");
+		send_error(SOCKET(conn), "Out of resources");
 		log_hit(conn->addr, conn->cmd, 414, 0);
 		close_request(conn);
 		return 1;
@@ -439,7 +554,13 @@ int read_request(struct connection *conn)
 #endif
 
 	conn->offset = 0;
+
+#ifdef HAVE_POLL
 	conn->ufd->events = POLLOUT;
+#else
+	FD_CLR(conn->sock, &readfds);
+	FD_SET(conn->sock, &writefds);
+#endif
 
 	return 0;
 }
@@ -455,16 +576,16 @@ int write_request(struct connection *conn)
 #endif
 
 #ifdef USE_SENDFILE
-	n = sendfile(conn->ufd->fd, conn->fd, &conn->offset, conn->len - conn->offset);
+	n = sendfile(SOCKET(conn), conn->fd, &conn->offset, conn->len - conn->offset);
 #else
-	n = write(conn->ufd->fd,
+	n = write(SOCKET(conn),
 			  conn->buf + conn->offset,
 			  conn->len - conn->offset);
 	conn->offset += n;
 #endif
 
 	if(n <= 0) {
-		send_errno(conn->ufd->fd, conn->cmd, errno);
+		send_errno(SOCKET(conn), conn->cmd, errno);
 		log_hit(conn->addr, conn->cmd, 500, 0);
 		close_request(conn);
 		return 1;
@@ -480,9 +601,9 @@ int write_request(struct connection *conn)
 			neednl = conn->buf[conn->len - 1] != '\n';
 #endif
 			if(neednl)
-				write(conn->ufd->fd, "\n.\r\n", 4);
+				write(SOCKET(conn), "\n.\r\n", 4);
 			else
-				write(conn->ufd->fd, ".\r\n", 3);
+				write(SOCKET(conn), ".\r\n", 3);
 		}
 
 		log_hit(conn->addr, conn->cmd, 200, conn->len);
@@ -496,7 +617,7 @@ void create_pidfile(char *fname)
 {
 	FILE *fp;
 	int n;
-	pid_t pid;
+	int pid;
 
 	if((fp = fopen(fname, "r"))) {
 		n = fscanf(fp, "%d\n", &pid);
@@ -534,7 +655,7 @@ int http_init() { return 0; }
 int http_get(struct connection *conn)
 {
 	log_hit(conn->addr, conn->cmd + 4, 501, 0);
-	send_http_error(conn->ufd->fd);
+	send_http_error(SOCKET(conn));
 	return -1;
 }
 #endif
