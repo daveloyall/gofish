@@ -2118,13 +2118,13 @@ fi
 
 echo $ac_n "checking http support""... $ac_c" 1>&6
 echo "configure:2121: checking http support" >&5
-if test "$enable_http" = "yes"; then
+if test "$enable_http" = "no"; then
   cat >> confdefs.h <<\EOF
-#define USE_HTTP 1
+#define USE_HTTP 0
 EOF
 
 else
-  enable_http=no
+  enable_http=yes
 fi
 echo "$ac_t""$enable_http" 1>&6
 

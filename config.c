@@ -1,7 +1,7 @@
 /*
  * config.c - read the config file for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.3 $ $Date: 2002/08/25 01:48:32 $
+ * $Revision: 1.4 $ $Date: 2002/08/30 05:10:59 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,6 +42,8 @@ int   port = GOPHER_PORT;
 uid_t uid = GOPHER_UID;
 gid_t gid = GOPHER_GID;
 int   ignore_local = IGNORE_LOCAL;
+int   icon_width = ICON_WIDTH;
+int   icon_height = ICON_HEIGHT;
 
 
 // If we are already out of memory, we are in real trouble
@@ -71,68 +73,74 @@ int read_config(char *fname)
 	FILE *fp;
 	char line[100], *s, *p;
 
-	if((fp = fopen(fname, "r")) == NULL) {
-		if(errno == ENOENT && strcmp(fname, GOPHER_CONFIG) == 0)
-			return 0;
+	// These values must be malloced
+	root_dir = must_strdup(GOPHER_ROOT);
+	if(hostname) hostname = must_strdup(hostname);
+
+	if((fp = fopen(fname, "r"))) {
+		while(fgets(line, sizeof(line), fp)) {
+			if(!isalpha(*line)) continue;
+
+			for(p = line + strlen(line); isspace(*(p - 1)); --p) ;
+			*p = '\0';
+
+			if((p = strchr(line, '=')) == NULL) {
+				printf("Bad line '%s'\n", line);
+				continue;
+			}
+			s = p++;
+
+			while(isspace(*(s - 1))) --s;
+			*s++ = '\0';
+
+			while(isspace(*p)) ++p;
+			if(*p == '\0') {
+				printf("No value for '%s'\n", line);
+				continue;
+			}
+
+			if(strcmp(line, "root") == 0) {
+				free(root_dir);
+				root_dir = must_strdup(p);
+			} else if(strcmp(line, "logfile") == 0)
+				logfile = must_strdup(p);
+			else if(strcmp(line, "pidfile") == 0)
+				pidfile = must_strdup(p);
+			else if(strcmp(line, "port") == 0)
+				must_strtol(p, &port);
+			else if(strcmp(line, "uid") == 0)
+				must_strtol(p, (int*)&uid);
+			else if(strcmp(line, "gid") == 0)
+				must_strtol(p, (int*)&gid);
+			else if(strcmp(line, "no_local") == 0)
+				must_strtol(p, &ignore_local);
+			else if(strcmp(line, "host") == 0) {
+				if(hostname) free(hostname);
+				hostname = must_strdup(p);
+			} else if(strcmp(line, "icon_width") == 0)
+				must_strtol(p, &icon_width);
+			else if(strcmp(line, "icon_height") == 0)
+				must_strtol(p, &icon_height);
+			else
+				printf("Unknown config '%s'\n", line);
+		}
+
+		fclose(fp);
+	}
+	else if(errno != ENOENT || strcmp(fname, GOPHER_CONFIG)) {
 		syslog(LOG_WARNING, "%s: %m", fname);
 		return 1;
 	}
 
-	while(fgets(line, sizeof(line), fp)) {
-		if(!isalpha(*line)) continue;
-
-		for(p = line + strlen(line); isspace(*(p - 1)); --p) ;
-		*p = '\0';
-
-		if((p = strchr(line, '=')) == NULL) {
-			printf("Bad line '%s'\n", line);
-			continue;
-		}
-		s = p++;
-
-		while(isspace(*(s - 1))) --s;
-		*s++ = '\0';
-
-		while(isspace(*p)) ++p;
-		if(*p == '\0') {
-			printf("No value for '%s'\n", line);
-			continue;
-		}
-
-		if(strcmp(line, "root") == 0)
-			root_dir = must_strdup(p);
-		else if(strcmp(line, "logfile") == 0)
-			logfile = must_strdup(p);
-		else if(strcmp(line, "pidfile") == 0)
-			pidfile = must_strdup(p);
-		else if(strcmp(line, "port") == 0)
-			must_strtol(p, &port);
-		else if(strcmp(line, "uid") == 0)
-			must_strtol(p, (int*)&uid);
-		else if(strcmp(line, "gid") == 0)
-			must_strtol(p, (int*)&gid);
-		else if(strcmp(line, "no_local") == 0)
-			must_strtol(p, &ignore_local);
-		else if(strcmp(line, "host") == 0)
-			hostname = must_strdup(p);
-		else
-			printf("Unknown config '%s'\n", line);
-	}
-
-	fclose(fp);
-
 	// Make sure hostname is set to something
 	// Make sure it is malloced
-	if(*hostname == '\0') {
+	if(hostname == NULL) {
 		if(gethostname(line, sizeof(line) - 1)) {
 			puts("Warning: setting hostname to localhost.\n"
 				 "This is probably not what you want.");
 			strcpy(line, "localhost");
 		}
-		if((hostname = strdup(line)) == NULL) {
-			printf("Out of memory\n");
-			return 1;
-		}
+		hostname = must_strdup(line);
 	}
 
 	return 0;

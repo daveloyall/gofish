@@ -74,10 +74,10 @@ if test "$ac_cv_func_sendfile" = "yes"; then
 fi
 
 AC_MSG_CHECKING([http support])
-if test "$enable_http" = "yes"; then
-  AC_DEFINE(USE_HTTP)
+if test "$enable_http" = "no"; then
+  AC_DEFINE(USE_HTTP, 0)
 else
-  enable_http=no
+  enable_http=yes
 fi
 AC_MSG_RESULT([$enable_http])
 

@@ -47,6 +47,8 @@ int sorttype = 0;
  *   - read .names
  *   - read .links
  *   - read .ignore
+ *   - if a directory .cache can not be created,
+ *     we still get the entry in the upper layer
  */
 
 
@@ -177,7 +179,6 @@ int output_dir(struct entry *entries, int n, char *path, int level)
 
 	if(!(fp = fopen(fname, "w"))) {
 		perror(path ? path : "root");
-		free(fname);
 		return 0;
 	}
 
@@ -231,9 +232,6 @@ void add_entry(struct entry **entries, int n, char *name, int isdir)
 
 static int isdir(struct dirent *ent, char *path, int len)
 {
-#ifdef DT_DIR
-	return ent->d_type == DT_DIR;
-#else
 	struct stat sbuf;
 	char *full;
 
@@ -250,7 +248,6 @@ static int isdir(struct dirent *ent, char *path, int len)
 	free(full);
 
 	return S_ISDIR(sbuf.st_mode);
-#endif
 }
 
 
@@ -321,10 +318,6 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
-	if((root_dir = strdup(GOPHER_ROOT)) == NULL) {
-		printf("Out of memory\n");
-		exit(1);
-	}
 	read_config(config);
 
 	if(!realpath(root_dir, full)) {

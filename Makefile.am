@@ -23,7 +23,6 @@ install-data-local:
 
 # Create version.h from gofish.spec
 # Don't use BUILT_SOURCES
-
 gopherd.o http.o: version.h
 
 version.h: gofish.spec

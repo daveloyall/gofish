@@ -1,7 +1,7 @@
 /*
  * log.c - log file output for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.3 $ $Date: 2002/08/25 01:48:32 $
+ * $Revision: 1.4 $ $Date: 2002/08/30 05:10:59 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -37,25 +37,39 @@ int log_open(char *logname)
 
 
 // Common log file format
-void log_hit(unsigned ip, char *name, unsigned status, unsigned bytes)
+void log_hit(struct connection *conn, unsigned status)
 {
 	extern int ignore_local;
-	char date[40];
+	char date[40], *name;
 	time_t now;
 	struct tm *t;
 
+
 	if(ignore_local &&
-	   ((htonl(ip) & 0xffff0000) == 0xc0a80000 ||
-		htonl(ip) == 0x7f000001)) return;
+	   ((htonl(conn->addr) & 0xffff0000) == 0xc0a80000 ||
+		htonl(conn->addr) == 0x7f000001)) return;
 
 	time(&now);
 	t = localtime(&now);
 
 	strftime(date, sizeof(date), "%d/%b/%Y:%T %z", t);
 
+#ifdef USE_HTTP
+	if(conn->status) {
+		// http request
+		name = conn->cmd += 4;
+		while(*name == '/') ++name;
+		strcat(name, " HTTP");
+		conn->status = 0;
+	}
+	else
+#endif
+		name = conn->cmd ? (*conn->cmd ? conn->cmd : "/") : "[Empty]";
+
+
 	// This is 400 chars max
 	fprintf(fp, "%s - - [%s] \"GET %.300s\" %u %u\n",
-			ntoa(ip), date, *name ? name : "/", status, bytes);
+			ntoa(conn->addr), date, name, status, conn->len);
 
 	(void)fflush(fp);
 }
@@ -67,35 +81,46 @@ void log_close()
 }
 
 
-void send_errno(int sock, char *name, int errnum)
+static void send_errno(int sock, char *name, int errnum)
 {
 	char error[1024];
 
 	if(*name == '\0')
-		sprintf(error, "3'<root>' %.500s\tfake\t%d\r\n",
+		sprintf(error, "3'<root>' %.500s\r\n",
 				strerror(errnum), errnum);
 	else
-		sprintf(error, "3'%.500s' %.500s\tfake\t%d\r\n",
+		sprintf(error, "3'%.500s' %.500s\r\n",
 				name, strerror(errnum), errnum);
 	write(sock, error, strlen(error));
 }
 
 
-void send_error(int sock, char *errstr)
+static struct errmsg {
+	unsigned errnum;
+	char *errstr;
+} errors[] = {
+	{ 408, "Request Timeout" },  // client may retry later
+	{ 414, "Request-URL Too Large" },
+	{ 500, "Server Error" },
+	{ 503, "Server Unavailable" },
+	{ 999, "Unknown error" } // marker
+};
+#define N_ERRORS	(sizeof(errors) / sizeof(struct errmsg))
+
+
+// Only called from close_request
+void send_error(struct connection *conn, unsigned error)
 {
-	char error[520];
+	char errstr[80];
+	int i;
 
-	sprintf(error, "3%.500s\terror.host\t0\r\n", errstr);
-	write(sock, error, strlen(error));
-}
+	if(error == 404) {
+		send_errno(SOCKET(conn), conn->cmd, errno);
+		return;
+	}
 
+	for(i = 0; i < N_ERRORS - 1 && error != errors[i].errnum; ++i) ;
 
-void send_http_error(int sock)
-{
-	char error[500];
-
-	strcpy(error, "HTTP/1.1 501 Not Implemented\r\n\r\n"
-		   "Sorry!\r\n\r\n"
-		   "This is a gopher server, not a web server.\r\n");
-	write(sock, error, strlen(error));
+	sprintf(errstr, "3%s [%d]\r\n", errors[i].errstr, error);
+	write(SOCKET(conn), errstr, strlen(errstr));
 }

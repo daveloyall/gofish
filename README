@@ -74,10 +74,10 @@ tarball, read on.
 OPTIONAL FEATURES
 -----------------
 
-GoFish contains an alpha version of a gopher to http gateway. This
-feature is disabled by default. To enable the feature:
+GoFish contains a gopher to http gateway. This feature is enabled by
+default. To disable the feature:
 
-	./configure --enable-http
+	./configure --disable-http
 
 
 CONTACT

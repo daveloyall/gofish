@@ -5,7 +5,7 @@
 #undef VERSION
 
 /* http gateway support */
-#undef USE_HTTP
+#define USE_HTTP 1
 
 /* Linux style sendfile */
 #undef HAVE_LINUX_SENDFILE

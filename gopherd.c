@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.4 $ $Date: 2002/08/26 02:35:42 $
+ * $Revision: 1.5 $ $Date: 2002/08/30 05:10:59 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -42,17 +42,24 @@
 #ifdef HAVE_LINUX_SENDFILE
 #include <sys/sendfile.h>
 #endif
+#ifdef HAVE_BSD_SENDFILE
+#include <sys/socket.h>
+#endif
 
 int verbose = 0;
+int max_requests = 0;
 
-struct connection conns[MAX_REQUESTS];
+
+// Add an extra connection for error replies
+static struct connection conns[MAX_REQUESTS + 1];
 
 #ifdef HAVE_POLL
-static struct pollfd ufds[MAX_REQUESTS];
+static struct pollfd ufds[MAX_REQUESTS + 1];
 static int npoll;
 
 static void start_polling(int csock);
 #else
+// SAM For select, could we tie fd to connection?
 static fd_set readfds, writefds;
 static int nfds;
 
@@ -60,7 +67,7 @@ static void start_selecting(int csock);
 #endif
 
 
-uid_t real_uid;
+static uid_t real_uid;
 
 // forward references
 static void gopherd(void);
@@ -70,7 +77,7 @@ static int read_request(struct connection *conn);
 static int write_request(struct connection *conn);
 
 
-void sighandler(int signum)
+static void sighandler(int signum)
 {
 	switch(signum) {
 	case SIGHUP:
@@ -88,6 +95,32 @@ void sighandler(int signum)
 		syslog(LOG_WARNING, "Got an unexpected %d signal\n", signum);
 		break;
 	}
+}
+
+
+static void cleanup()
+{
+	struct connection *conn = conns;
+	int i;
+
+	http_cleanup();
+
+	close(SOCKET(conn)); // accept socket
+
+	/*
+     * This is mainly for valgrind.
+     * Close any outstanding connections.
+     * Free any cached memory.
+     */
+	for(++conn, i = 1; i < MAX_REQUESTS; ++i, ++conn) {
+		if(SOCKET(conn)) close_request(conn, 500);
+		if(conn->cmd) free(conn->cmd);
+	}
+
+	free(root_dir);
+	free(hostname);
+
+	printf("Max requests %d\n", max_requests);
 }
 
 
@@ -126,7 +159,7 @@ int main(int argc, char *argv[])
 
 void gopherd(void)
 {
-	int csock;
+	int csock, i;
 
 	openlog("gopherd", LOG_CONS, LOG_DAEMON);
 	syslog(LOG_INFO, "GoFish " GOFISH_VERSION " starting.");
@@ -162,12 +195,12 @@ void gopherd(void)
 
 	// connection socket
 	if((csock = listen_socket(port)) < 0) {
-		printf("Unable to create listen socket\n");
 		syslog(LOG_ERR, "Unable to create socket\n");
 		exit(1);
 	}
 
 	memset(conns, 0, sizeof(conns));
+	for(i = 0; i < MAX_REQUESTS; ++i) conns[i].conn_n = i;
 
 	// These never return
 #ifdef HAVE_POLL
@@ -188,6 +221,9 @@ void start_polling(int csock)
 
 	for(i = 0; i < MAX_REQUESTS; ++i)
 		conns[i].ufd = &ufds[i];
+
+	// Now it is safe to install
+	atexit(cleanup);
 
 	ufds[0].fd = csock;
 	ufds[0].events = POLLIN;
@@ -215,10 +251,8 @@ void start_polling(int csock)
 			}
 			else if(ufds[i].revents) {
 				syslog(LOG_DEBUG, "Revents = %d", ufds[i].revents);
-				close_request(&conns[i]);
 				--n;
 			}
-
 
 		if(n > 0) syslog(LOG_DEBUG, "Not all requests processed");
 	}
@@ -248,6 +282,8 @@ void start_selecting(int csock)
 
 	FD_SET(csock, &readfds);
 	nfds = csock + 1;
+
+	atexit(cleanup);
 
 	while(1) {
 		memcpy(&cur_reads,  &readfds, sizeof(fd_set));
@@ -388,9 +424,23 @@ static int smart_open(char *name)
 }
 
 
-void close_request(struct connection *conn)
+void close_request(struct connection *conn, int status)
 {
 	if(verbose) printf("Close request\n");
+
+	// Log hits in one place
+	log_hit(conn, status);
+
+	// Send errors in one place also
+	if(status != 200) send_error(conn, status);
+
+	// Note: conn[0] never has memory allocated
+	if(conn->conn_n > MIN_REQUESTS && conn->cmd) {
+		free(conn->cmd);
+		conn->cmd = NULL;
+	}
+
+	conn->len = conn->offset = 0;
 
 #ifdef HAVE_SENDFILE
 	if(conn->fd) {
@@ -418,15 +468,15 @@ void close_request(struct connection *conn)
 		close(conn->sock);
 		FD_CLR(conn->sock, &readfds);
 		FD_CLR(conn->sock, &writefds);
-		// SAM decrement nfds?
+		if(conn->sock >= nfds - 1)
+			for(nfds = conn->sock - 1; nfds > 0; --nfds)
+				if(ISSET(nfds, &readfds) || ISSET(nfds, &writefds)) {
+					nfds++;
+					break;
+				}
 		conn->sock = 0;
 	}
 #endif
-
-	if(conn->cmd) {
-		free(conn->cmd);
-		conn->cmd = NULL;
-	}
 
 #ifdef USE_HTTP
 	if(conn->hdr) {
@@ -440,8 +490,6 @@ void close_request(struct connection *conn)
 		conn->outname = NULL;
 	}
 #endif
-
-	conn->len = conn->offset = 0;
 }
 
 
@@ -450,67 +498,59 @@ int new_connection(int csock)
 	int sock;
 	unsigned addr;
 	int i;
-	char *cmd;
+	struct connection *conn;
+
 
 	if((sock = accept_socket(csock, &addr)) <= 0) {
 		syslog(LOG_WARNING, "Accept connection: %m");
 		return -1;
 	}
 
-	if(fcntl(sock, F_SETFL, O_NONBLOCK)) {
-		syslog(LOG_ERR, "fcntl %m");
-		send_errno(sock, "Server error", errno);
-		close(sock);
-		return -1;
-	}
-
-	if((cmd = malloc(MAX_LINE + 1)) == NULL) {
-		syslog(LOG_ERR, "Out of memory");
-		send_error(sock, "Not enough resources.");
-		close(sock);
-		return -1;
-	}
-
 	// Find a free connection
+	// We have one extra sentinel at the end for error replies
+	conn = &conns[1];
 #ifdef HAVE_POLL
-	for(i = 1; i < MAX_REQUESTS; ++i)
-		if(ufds[i].fd == 0) {
-			ufds[i].fd = sock;
-			ufds[i].events = POLLIN;
-
-			conns[i].cmd = cmd;
-			conns[i].offset = 0;
-			conns[i].len = MAX_LINE;
-
-			conns[i].addr = addr;
+	for(i = 1; i <= MAX_REQUESTS; ++i, ++conn)
+		if(conn->ufd->fd == 0) {
+			conn->ufd->fd = sock;
+			conn->ufd->events = POLLIN;
 			if(i + 1 > npoll) npoll = i + 1;
-			if(verbose)
-				printf("Accepted connection %d from %s\n", i, ntoa(addr));
-			return 0;
+			break;
 		}
 #else
-	for(i = 1; i < MAX_REQUESTS; ++i)
-		if(conns[i].sock == 0) {
-			conns[i].sock = sock;
+	for(i = 1; i <= MAX_REQUESTS; ++i, ++conn)
+		if(conn->sock == 0) {
+			conn->sock = sock;
 			FD_SET(sock, &readfds);
-
-			conns[i].cmd = cmd;
-			conns[i].offset = 0;
-			conns[i].len = MAX_LINE;
-
-			conns[i].addr = addr;
 			if(sock + 1 > nfds) nfds = sock + 1;
-			if(verbose)
-				printf("Accepted connection %d from %s\n", i, ntoa(addr));
-			return 0;
+			break;
 		}
 #endif
+	if(i > max_requests) max_requests = i;
 
-	syslog(LOG_WARNING, "Too many requests.");
+	conn->addr   = addr;
+	conn->offset = 0;
+	conn->len    = 0;
 
-	close(sock);
-	return 1;
+	if(i == MAX_REQUESTS) {
+		syslog(LOG_WARNING, "Too many requests.");
+		close_request(conn, 503);
+		return -1;
+	}
+
+	if(fcntl(sock, F_SETFL, O_NONBLOCK)) {
+		close_request(conn, 500);
+		return -1;
+	}
+
+	if(!conn->cmd && !(conn->cmd = malloc(MAX_LINE + 1))) {
+		close_request(conn, 503);
+		return -1;
+	}
+
+	return 0;
 }
+
 
 int read_request(struct connection *conn)
 {
@@ -518,14 +558,12 @@ int read_request(struct connection *conn)
 	int n;
 	char *p;
 
-	n = read(SOCKET(conn), conn->cmd + conn->offset, conn->len - conn->offset);
+	n = read(SOCKET(conn), conn->cmd + conn->offset, MAX_LINE - conn->offset);
 
 	if(n <= 0) {
 		// If we can't read, we probably can't write ....
 		syslog(LOG_ERR, "Read error %m");
-		send_error(SOCKET(conn), "Unable to read request");
-		log_hit(conn->addr, conn->cmd, 414, 0);
-		close_request(conn);
+		close_request(conn, 408);
 		return 1;
 	}
 
@@ -534,13 +572,11 @@ int read_request(struct connection *conn)
 	// We alloced an extra space for the '\0'
 	conn->cmd[conn->offset] = '\0';
 
+#if 0
 	// Look for the first \n in case we got a multiline http GET command
 	if((p = strchr(conn->cmd, '\n')) == 0) {
-		if(conn->offset >= conn->len) {
-			syslog(LOG_ERR, "Line too long.");
-			send_error(SOCKET(conn), "Line too long");
-			log_hit(conn->addr, conn->cmd, 414, 0);
-			close_request(conn);
+		if(conn->offset >= MAX_LINE) {
+			close_request(conn, 414);
 			return 1;
 		}
 		return 0; // not an error
@@ -548,6 +584,19 @@ int read_request(struct connection *conn)
 
 	*p-- = '\0';
 	if(conn->offset > 1 && *p == '\r') *p = '\0';
+#else
+	if(conn->cmd[conn->offset - 1] != '\n') {
+		if(conn->offset >= MAX_LINE) {
+			close_request(conn, 414);
+			return 1;
+		}
+		return 0; // not an error
+	}
+
+	conn->cmd[conn->offset - 1] = '\0';
+	if(conn->offset > 1 && conn->cmd[conn->offset - 2] == '\r')
+		conn->cmd[conn->offset - 2] = '\0';
+#endif
 
 	if(verbose > 2) printf("Request '%s'\n", conn->cmd);
 
@@ -566,16 +615,12 @@ int read_request(struct connection *conn)
 		   strncmp(conn->cmd, "HEAD ", 5) == 0) {
 			// Someone did an http://host:70/
 			if((fd = http_get(conn)) < 0) {
-				send_errno(SOCKET(conn), conn->cmd, errno);
-				log_hit(conn->addr, conn->cmd + 4, 404, 0);
-				close_request(conn);
+				close_request(conn, 404);
 				return 1;
 			}
 		}
 		else {
-			log_hit(conn->addr, conn->cmd, 404, 0);
-			send_errno(SOCKET(conn), conn->cmd, errno);
-			close_request(conn);
+			close_request(conn, 404);
 			return 1;
 		}
 	}
@@ -584,6 +629,10 @@ int read_request(struct connection *conn)
 	conn->fd = fd;
 
 	conn->len = lseek(fd, -1, SEEK_END) + 1;
+#if defined(USE_HTTP) && defined(HAVE_BSD_SENDFILE)
+	// BSD: length includes the header
+	if(conn->hdr) conn->len += conn->hdr->iov_len;
+#endif
 	if(*conn->cmd == '9')
 		conn->neednl = 0;
 	else {
@@ -598,9 +647,7 @@ int read_request(struct connection *conn)
 
 	if(conn->buf == NULL) {
 		syslog(LOG_ERR, "mmap: %m");
-		send_error(SOCKET(conn), "Out of resources");
-		log_hit(conn->addr, conn->cmd, 414, 0);
-		close_request(conn);
+		close_request(conn, 408);
 		return 1;
 	}
 #endif
@@ -618,43 +665,79 @@ int read_request(struct connection *conn)
 }
 
 
+#ifdef HAVE_BSD_SENDFILE
 int write_request(struct connection *conn)
 {
 	int n;
-#ifdef HAVE_BSD_SENDFILE
-	/* You must pass in an address, even if all 0s */
 	struct sf_hdtr hdr;
 
+	/* You must pass in an address, even if all 0s */
 	memset(&hdr, 0, sizeof(hdr));
+
+#ifdef USE_HTTP
 	if(conn->hdr) {
 		hdr.headers = conn->hdr;
 		hdr.hdr_cnt = 1;
+
+		// You must specify a non-null address, reuse the headers
+		hdr.trailers = conn->hdr;
 	}
+#endif
 
 	if(sendfile(conn->fd, SOCKET(conn), conn->offset, conn->len - conn->offset,
-				&hdr, &n, 0) == 0 && n > 0)
+				&hdr, (off_t *)&n, 0) == 0 && n > 0) {
 		// success
-		conn->offset += n;
+		// printf("Total success! %d/%d\n", n, conn->len); // SAM
+		if(*conn->cmd != '9') {
+			if(conn->neednl)
+				write(SOCKET(conn), "\n.\r\n", 4);
+			else
+				write(SOCKET(conn), ".\r\n", 3);
+		}
+
+		close_request(conn, 200);
+	}
 	else if(errno == EAGAIN && n > 0) {
 		// success - we just need to poll again
+#ifdef USE_HTTP
 		if(conn->hdr) {
 			if(n >= conn->hdr->iov_len) {
+			  printf("header send n %d hdr %d\n",
+				 n, conn->hdr->iov_len); // SAM
 				conn->offset += n - conn->hdr->iov_len;
 				free(conn->hdr);
 				conn->hdr = NULL;
 			}
 			else {
 				// This should never happen
+			  printf("Only sent %d of %d\n",
+				 n, conn->hdr->iov_len);
 				conn->hdr->iov_base += n;
 				conn->hdr->iov_len  -= n;
 			}
-		}
-		else
+		} else
+#endif
+		{
 			conn->offset += n;
-	} else
+			printf("Sent %d of %d\n", conn->offset, conn->len);
+		}
+	} else {
 		// failure
-		n = -1;
-#else // !USE_BSD_SENDFILE
+		perror("sendfile FAILED");
+		send_errno(SOCKET(conn), conn->cmd, errno);
+		close_request(conn, 500);
+		return 1;
+	}
+
+	return 0;
+}
+
+#else /* ! HAVE_BSD_SENDFILE */
+
+int write_request(struct connection *conn)
+{
+	int n;
+
 #ifdef USE_HTTP
 	if(conn->hdr)
 		return http_send_response(conn);
@@ -668,12 +751,9 @@ int write_request(struct connection *conn)
 			  conn->len - conn->offset);
 	conn->offset += n;
 #endif
-#endif // USE_BSD_SENDFILE
 
 	if(n <= 0) {
-		send_errno(SOCKET(conn), conn->cmd, errno);
-		log_hit(conn->addr, conn->cmd, 500, 0);
-		close_request(conn);
+		close_request(conn, 408);
 		return 1;
 	}
 
@@ -681,7 +761,7 @@ int write_request(struct connection *conn)
 		if(*conn->cmd != '9') {
 			int neednl;
 
-#ifdef HAVE_SENDFILE
+#ifdef HAVE_LINUX_SENDFILE
 			neednl = conn->neednl;
 #else
 			neednl = conn->buf[conn->len - 1] != '\n';
@@ -692,12 +772,13 @@ int write_request(struct connection *conn)
 				write(SOCKET(conn), ".\r\n", 3);
 		}
 
-		log_hit(conn->addr, conn->cmd, 200, conn->len);
-		close_request(conn);
+		close_request(conn, 200);
 	}
 
 	return 0;
 }
+#endif /* HAVE_BSD_SENDFILE */
+
 
 void create_pidfile(char *fname)
 {
@@ -733,15 +814,3 @@ void create_pidfile(char *fname)
 
 	fclose(fp);
 }
-
-
-#ifndef USE_HTTP
-int http_init() { return 0; }
-
-int http_get(struct connection *conn)
-{
-	log_hit(conn->addr, conn->cmd + 4, 501, 0);
-	send_http_error(SOCKET(conn));
-	return -1;
-}
-#endif

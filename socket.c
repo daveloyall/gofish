@@ -1,7 +1,7 @@
 /*
  * socket.c - socket utilities for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.3 $ $Date: 2002/08/25 01:48:32 $
+ * $Revision: 1.4 $ $Date: 2002/08/30 05:10:59 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,21 +64,22 @@ int accept_socket(int sock, unsigned *addr)
 
 	if((new = accept (sock, (struct sockaddr *)&sock_name, &addrlen)) >= 0)
 		if(addr)
-			*addr = sock_name.sin_addr.s_addr;
+			*addr = htonl(sock_name.sin_addr.s_addr);
 
 	return new;
 }
 
 
+// network byte order
 char *ntoa(unsigned n)
 {
 	static char a[16];
 
 	sprintf(a, "%d.%d.%d.%d",
-			n & 0xff,
-			(n >>  8) & 0xff,
+			(n >> 24) & 0xff,
 			(n >> 16) & 0xff,
-			(n >> 24) & 0xff);
+			(n >>  8) & 0xff,
+			n & 0xff);
 
 	return a;
 }

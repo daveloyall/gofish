@@ -106,6 +106,8 @@ static int http_build_response(struct connection *conn, int status, char *type)
 	conn->hdr->iov_base = p;
 	conn->hdr->iov_len  = len;
 
+	conn->status = status;
+
 	return 0;
 }
 
@@ -118,26 +120,23 @@ int http_send_response(struct connection *conn)
 	n = writev(SOCKET(conn), conn->hdr, 1);
 
 	if(n <= 0) {
-		send_errno(SOCKET(conn), conn->cmd, errno);
-		log_hit(conn->addr, conn->cmd, 500, 0);
-		close_request(conn);
+		close_request(conn, 408);
 		return 1;
+	}
+
+	if(n >= conn->hdr->iov_len) {
+		free(conn->hdr);
+		conn->hdr = NULL;
+
+		if(conn->len == 0)
+			// This is an error status - no data to send
+			close_request(conn, conn->status);
+
+		return 0;
 	}
 
 	conn->hdr->iov_base += n;
 	conn->hdr->iov_len  -= n;
-	if(conn->hdr->iov_len <= 0) {
-		free(conn->hdr);
-		conn->hdr = NULL;
-
-		if(conn->len == 0) {
-			// This is an error status - no data to send
-			log_hit(conn->addr, conn->cmd, conn->status, 0);
-			close_request(conn);
-		}
-
-		return 0;
-	}
 
 	return 1;
 }
@@ -147,6 +146,7 @@ static int http_dir_line(int out, char *line)
 {
 	char *desc, *url, *host, *port;
 	char *p, *icon;
+	char buf[100];
 
 	for(desc = p = line + 1; *p && *p != '\t'; ++p) ;
 	*p++ = '\0';
@@ -157,10 +157,10 @@ static int http_dir_line(int out, char *line)
 	for(port = p; *p && *p != '\t'; ++p) ;
 	*p++ = '\0';
 
-
-	write_str(out, "<p>&nbsp;&nbsp;&nbsp;");
+	write_str(out, "<tr>\n");
 
 	if(*line == 'i') {
+		write_str(out, " <td>&nbsp;<td>");
 		write_str(out, line + 1);
 		write_out(out, "\n", 1);
 	} else {
@@ -173,13 +173,16 @@ static int http_dir_line(int out, char *line)
 		default:  icon = "unknown"; break;
 		}
 
-		write_str(out, "<img src=\"/g/icons/gopher_");
-		write_str(out, icon);
-		write_str(out, ".gif\">&nbsp;&nbsp;&nbsp;");
+		sprintf(buf,
+				" <td width=%d>"
+				"<img src=\"/g/icons/gopher_%s.gif\" "
+				"width=%d height=%d alt=\"[%s]\">\n <td>",
+				icon_width + 4, icon, icon_width, icon_height, icon);
+		write_str(out, buf);
+
 		if(strcmp(host, hostname) && strcmp(host, "localhost")) {
 			write_str(out, desc);
-			write_str(out, " ");
-			write_str(out, "<small>[gopher://");
+			write_str(out, " <small>[gopher://");
 			write_str(out, host);
 			if(strcmp(port, "70")) {
 				write_str(out, ":");
@@ -192,8 +195,7 @@ static int http_dir_line(int out, char *line)
 				write_str(out, url + 1);
 			}
 			write_str(out, "]</small>\n");
-		}
-		else {
+		} else {
 			write_str(out, "<a href=\"/");
 			write_out(out, line, 1);
 			write_str(out, url + 1);
@@ -228,18 +230,18 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 		return -1;
 	}
 
-	if(*dir == '\0') dir = "[Root]";
+	if(*dir == '\0' || strcmp(dir, "/") == 0) dir = "[Root]";
 	sprintf(buffer,
-			"<html>\n<head>\n<title>%.60s</title>\n"
-#if 1
-			"<style type=text/ccs> <!--\n"
-			"  BODY { margin: 0 10%%; }\n"
-			"-->\n</style>\n"
-#endif
-			"</head><body bgcolor=white>\n"
-			"<h1>%.60s</h1>\n<hr>\n",
+			"<!DOCTYPE HTML PUBLIC "
+			"\"-//W3C//DTD HTML 4.01 Transitional//EN\">\n"
+			"<html>\n<head><title>%.80s</title></head>\n"
+			"<body bgcolor=white>\n\n"
+			"<center>\n<table border=0 width=\"90%%\">\n" // table
+			"<tr><td colspan=2><h1>%.80s</h1>\n"
+			"<tr><td colspan=2><hr>\n",
 			dir, dir);
 	write_str(out, buffer);
+
 
 	buf = buffer;
 	len = BUFSIZE;
@@ -271,8 +273,14 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 		return -1;
 	}
 
-	write_str(out, "<hr><small>GoFish gopher to http gateway.</small>\n"
-			  "</body></html>\n");
+	write_str(out, "<tr><td colspan=2><hr>\n"
+		  "<tr><td colspan=2><small>"
+		  "<a href=\"http://gofish.sourceforge.net/\">"
+		  "GoFish " GOFISH_VERSION
+		  "</a> gopher to http gateway.</small>\n"
+		  "</table>\n</center>\n");
+
+	write_str(out, "\n</body>\n</html>\n");
 
 	close(fd);
 
@@ -296,6 +304,37 @@ static int valid_type(char type)
 	}
 }
 
+
+struct mime {
+	char *ext;
+	char *mime;
+};
+
+static struct mime image_mimes[] = {
+	{ "gif",  "image/gif"  },
+	{ "jpg",  "image/jpeg" },
+	{ "png",  "image/png"  },
+	{ "jpeg", "image/jpeg" },
+};
+#define N_IMAGE_MIMES	(sizeof(image_mimes) / sizeof(struct mime))
+
+
+static char *mime_image(char *file)
+{
+	char *p;
+	int i;
+
+	if((p = strrchr(file, '.')) == NULL) return NULL;
+	++p;
+
+	for(i = 0; i < N_IMAGE_MIMES; ++i)
+		if(strcasecmp(p, image_mimes[i].ext) == 0)
+			return image_mimes[i].mime;
+
+	return NULL;
+}
+
+
 /*
  * This routine is exported to GoFish to process http GET requests.
  *
@@ -307,6 +346,7 @@ static int valid_type(char type)
  */
 int http_get(struct connection *conn)
 {
+	static char *mime_html = "text/html; charset=iso-8859-1";
 	char *e;
 	int fd;
 	char *mime, type1;
@@ -316,8 +356,10 @@ int http_get(struct connection *conn)
 	while(isspace(*request)) ++request;
 
 	if(!(e = strstr(request, "HTTP/"))) {
-		syslog(LOG_WARNING, "No HTTP in '%s'", request);
-		return -1;
+		// Lynx does not add HTTP!
+		if((e = strchr(request, '\n')) == NULL)
+			e = request + strlen(request); // paranoia
+		if(*(e - 1) == '\r') --e;
 	}
 
 	while(*(e - 1) == ' ') --e;
@@ -348,13 +390,13 @@ int http_get(struct connection *conn)
 		case '1':
 			fd = http_directory(conn, fd, request);
 			if(fd < 0) return -1;
-			mime = "text/html";
+			mime = mime_html;
 			break;
 		case '0': mime = "text/plain"; break;
 		case '9': mime = "application/octet-stream"; break;
 		case 'g': mime = "image/gif"; break;
-		case 'h': mime = "text/html"; break;
-		case 'I': mime = NULL; break;
+		case 'h': mime = mime_html; break;
+		case 'I': mime = mime_image(request); break;
 		default:
 			syslog(LOG_WARNING, "Bad file type %c", type1);
 			return -1;
@@ -366,9 +408,15 @@ int http_get(struct connection *conn)
 			return -1;
 		}
 
+		/*
+		 * The generic gopher code looks at this for the file
+		 * type. All files are "binary" so we do not send the trailing
+		 * dot.
+		 */
+		*conn->cmd = '9';
+
 		return fd;
-	}
-	else {
+	} else {
 		http_build_response(conn, 404, "text/html");
 		syslog(LOG_WARNING, "%s: %m", request);
 		return -1;
@@ -386,8 +434,7 @@ static int smart_open(char *name, char type)
 {
 	if(*name == '/') ++name;
 
-	if(*name == '\0')
-		return open(".cache", O_RDONLY);
+	if(*name == '\0') return open(".cache", O_RDONLY);
 
 #ifdef ALLOW_NON_ROOT
 	if(checkpath(name)) return -1;
@@ -419,6 +466,33 @@ int http_init()
 	}
 
 	return 0;
+}
+
+
+void http_cleanup()
+{
+	free(os_str);
+}
+
+
+#else
+
+/* Stub out the exported functions */
+
+int http_init() { return 0; }
+
+void http_cleanup() {}
+
+int http_get(struct connection *conn)
+{
+	char error[500];
+
+	strcpy(error, "HTTP/1.1 501 Not Implemented\r\n\r\n"
+		   "Sorry!\r\n\r\n"
+		   "This is a gopher server, not a web server.\r\n");
+	write(sock, error, strlen(error));
+
+	return -1;
 }
 
 #endif /* USE_HTTP */
