@@ -1,3 +1,13 @@
+Changes for 0.24
+
+    GoFish
+
+	* all I/O now checks for EINTR as recommended by Folkert van
+	Heusden
+	* added blocking read/write patchs from Folkert van Heusden
+	* added daemon patch from Folkert van Heusden
+	* bugfix race condition when reopening log
+
 Changes for 0.23
 
     GoFish
