@@ -1,6 +1,6 @@
-gofish (0.22-1) unstable; urgency=low
+gofish (0.23-1) unstable; urgency=low
 
   * The `Welcome to my Land' release.
-  * Initial upload to Debian.
+  * Initial upload to Debian (Closes: #169089).
 
  -- Gergely Nagy <algernon@bonehunter.rulez.org>  Thu, 14 Nov 2002 13:30:16 +0100

@@ -178,7 +178,7 @@ setup_privs (void)
 	root_uid = getuid();
 
 	if(uid == (uid_t)-1 || gid == (uid_t)-1) {
-		pwd = getpwnam(strdup(user));
+		pwd = getpwnam(user);
 		if(!pwd) {
 			syslog(LOG_ERR, "No such user: `%s'.", user);
 			exit(1);

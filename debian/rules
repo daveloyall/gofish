@@ -19,18 +19,17 @@ config.status: configure
 	test -e debian/control
 	CFLAGS="${CFLAGS}" ./configure --prefix=/usr --sysconfdir=/etc \
 				       --mandir=/usr/share/man \
+				       --with-gopherroot=/var/gopher \
+				       --localstatedir=/var \
 				       --build=${BGT} --host=${HGT} \
 				       ${CONFIG_FLAGS}
 
-build: patch config.status
+build: config.status
 	test -e debian/control
 	${MAKE}
 
-clean: clean1 unpatch
+clean:
 	test -e debian/control && test xroot = x`whoami`
-	rm -rf debian/patched
-clean1: 
-	test -e debian/control && test "x`whoami`" = "xroot"
 	rm -rf debian/${PACKAGE}.substvars ${PKGDIR} debian/files
 	-${MAKE} distclean
 	rm -rf ${PKGDIR}
@@ -42,8 +41,7 @@ install: build
 		${PKGDIR}/usr/share/doc/${PACKAGE}
 	${MAKE} install DESTDIR=${PKGDIR}
 ## Clean up after install...
-	mv ${PKGDIR}/usr/var/lib/gopherd/icons ${PKGDIR}/var/gopher/
-	rm -rf  ${PKGDIR}/usr/var \
+	rm -rf  ${PKGDIR}/var/gopher/.gopher+ \
 		${PKGDIR}/usr/sbin/gopherd \
 		${PKGDIR}/usr/share/man/man1/gopherd.1
 	install -m 0755 debian/maint/gofish ${PKGDIR}/etc/init.d/
@@ -97,53 +95,5 @@ binary-arch: binary-gofish
 
 binary: binary-indep binary-arch
 
-patch: patch-stamp
-patch-stamp:
-	test -d debian/patched || install -d debian/patched
-	@echo "Patches applied in the Debian version of ${PACKAGE}:" > $@T
-	@for patch in `cat debian/patches/00list`; do \
-		stamp=debian/patched/$$patch.dpatch; \
-		patch=debian/patches/$$patch.dpatch; \
-		author=`sed -n "s,^## *.*dpatch by *,,p" $$patch`; \
-		test -x $$patch || chmod +x $$patch; \
-		if test -f $$stamp; then \
-			echo "$$patch already applied."; \
-			echo -e "\n$$patch ($$author):" >> $@T; \
-			sed -n 's/^## *DP: */  /p' $$patch >> $@T; \
-		else \
-			echo -n "applying patch $$patch..."; \
-			if $$patch -patch >$$stamp.new 2>&1; then \
-				mv $$stamp.new $$stamp; \
-				touch $$stamp; \
-				echo -e "\n$$patch ($$author):" >> $@T; \
-				sed -n 's/^## *DP: */  /p' $$patch >> $@T; \
-				echo " ok."; \
-			else \
-				echo " failed."; \
-				exit 1; \
-			fi; \
-		fi; \
-	done
-	mv -f $@T $@
-
-unpatch:
-	@for patch in `tac debian/patches/00list`; do \
-		stamp=debian/patched/$$patch.dpatch; \
-		patch=debian/patches/$$patch.dpatch; \
-		test -x $$patch || chmod +x $$patch; \
-		if test -f $$stamp; then \
-			echo -n "reverting patch $$patch..."; \
-			if $$patch -unpatch 2>&1 >/dev/null; then \
-				rm -f $$stamp; \
-				echo " ok."; \
-			else \
-				echo " failed."; \
-				exit 1; \
-			fi; \
-		fi; \
-	done
-	rm -f patch-stamp
-
-.PHONY: binary binary-arch binary-indep clean build install binary-gofish \
-	patch unpatch clean1
+.PHONY: binary binary-arch binary-indep clean build install binary-gofish
 .SUFFIXES:

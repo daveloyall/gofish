@@ -5,8 +5,9 @@ AUTOMAKE_OPTIONS = no-dependencies
 DEFS = -DSYSCONFDIR=\"${sysconfdir}\" -DLOCALSTATEDIR=\"${localstatedir}\" \
        -DGOPHER_ROOT=\"@gopherroot@\"
 
-sbin_PROGRAMS = gofish
+sbin_PROGRAMS = gofish catfish
 gofish_SOURCES = gofish.c log.c socket.c config.c http.c mmap_cache.c mime.c
+catfish_SOURCES = catfish.c log.c socket.c config.c cgi.c mmap_cache.c mime.c
 
 EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \
 	init-gofish gofish.spec
