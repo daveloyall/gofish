@@ -1,7 +1,7 @@
 /*
  * config.c - read the config file for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.2 $ $Date: 2002/08/24 05:04:31 $
+ * $Revision: 1.3 $ $Date: 2002/08/25 01:48:32 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

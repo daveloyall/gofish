@@ -21,6 +21,7 @@ user while accessing files.
 
 %prep
 %setup
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var
 
 %build
 make
@@ -28,41 +29,18 @@ make
 %install
 rm -rf $RPM_BUILD_ROOT
 
-mkdir -p $RPM_BUILD_ROOT/usr/sbin
-install -s -m 700 gopherd $RPM_BUILD_ROOT/usr/sbin/gopherd
+make DESTDIR=$RPM_BUILD_ROOT install
 
-mkdir -p $RPM_BUILD_ROOT/usr/bin
-install -s -m 755 mkcache $RPM_BUILD_ROOT/usr/bin/mkcache
-install -m 755 check-files $RPM_BUILD_ROOT/usr/bin/check-files
-
-mkdir -p $RPM_BUILD_ROOT/usr/man/man1
-mkdir -p $RPM_BUILD_ROOT/usr/man/man5
-install -m 644 gofish.1 $RPM_BUILD_ROOT/usr/man/man1/gofish.1
-install -m 644 gofish.5 $RPM_BUILD_ROOT/usr/man/man5/gofish.5
-install -m 644 dotcache.5 $RPM_BUILD_ROOT/usr/man/man5/dotcache.5
-install -m 644 gopherd.1 $RPM_BUILD_ROOT/usr/man/man1/gopherd.1
-install -m 644 mkcache.1 $RPM_BUILD_ROOT/usr/man/man1/mkcache.1
-
-mkdir -p $RPM_BUILD_ROOT/etc
-install gofish.conf $RPM_BUILD_ROOT/etc/gofish.conf
-
+# This is not install by make install
 mkdir -p $RPM_BUILD_ROOT/etc/rc.d/init.d
 install init-gofish $RPM_BUILD_ROOT/etc/rc.d/init.d/gopherd
-
-mkdir -p $RPM_BUILD_ROOT/usr/share/gofish/icons
-install -m644 icons/*.gif $RPM_BUILD_ROOT/usr/share/gofish/icons
-install -m644 _gopher+ $RPM_BUILD_ROOT/usr/share/gofish/.gopher+
-
-mkdir -p $RPM_BUILD_ROOT/var/lib/gopherd
-install -m644 icons/*.gif $RPM_BUILD_ROOT/var/lib/gopherd/icons
-install -m644 _gopher+ $RPM_BUILD_ROOT/var/lib/gopherd/.gopher+
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root)
-%doc COPYING README INSTALL
+%doc COPYING README INSTALL NEWS AUTHORS ChangeLog
 
 /usr/sbin/gopherd
 /usr/bin/mkcache
@@ -71,10 +49,14 @@ rm -rf $RPM_BUILD_ROOT
 /etc/rc.d/init.d/gopherd
 /usr/man/man1/*
 /usr/man/man5/*
-/usr/share/gofish/icons/*
-/usr/share/gofish/.gopher+
+/var/lib/gopherd/icons/*
+/var/lib/gopherd/.gopher+
 
 %changelog
+* Sat Aug 24 2002 Sean MacLennan <seanm@seanm.ca>
+- Updated to 0.9
+- Now using configure
+
 * Thu Aug 22 2002 Sean MacLennan <seanm@seanm.ca>
 - Updated to 0.8
 - Added alpha support for http gateway

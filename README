@@ -30,15 +30,14 @@ Well, it compiles... it can serve files... I am using it on YOW.
 
     gopher://seanm.ca
 
-The current mkcache works, but not well.
+The current mkcache works.
 
 
 WHERE CAN I GET IT?
 -------------------
 
-I have RPMS/SRPMS for Redhat x86 and the StrongARM NetWinder. I also
-have a tarball that should compile under almost any modern Unix
-platform.
+GoFish is hosted on SourceForge. Go to the project page
+<http://gofish.sourceforge.net>  and follow the instructions.
 
 
 CURRENT ASSUMPTIONS
@@ -53,6 +52,33 @@ assumption must hold:
 There is a script called check-files that will verify that the above
 is true. If you have changed the GOPHER_ROOT, you must change it in
 the check-files script also.
+
+
+HOW TO BUILD IT
+---------------
+
+If you are using the RPMS, you don't have to build it! If you are
+using the source RPMS, build it like you would any source RPM. For the
+tarball, read on.
+
+  1) Untar the tarball. You should get a gofish-<version> directory.
+  2) cd gofish-<version>
+  3) ./configure
+          or
+     ./configure --enable-http
+  4) make
+  5) su root
+  6) make install
+
+
+OPTIONAL FEATURES
+-----------------
+
+GoFish contains an alpha version of a gopher to http gateway. This
+feature is disabled by default. To enable the feature:
+
+	./configure --enable-http
+
 
 CONTACT
 -------

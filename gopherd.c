@@ -1,7 +1,7 @@
 /*
  * gopherd.c - the mainline for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.2 $ $Date: 2002/08/24 05:04:31 $
+ * $Revision: 1.3 $ $Date: 2002/08/25 01:48:32 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -31,16 +31,16 @@
 #include <errno.h>
 #include <sys/time.h>
 
-#ifdef USE_MMAP
+#include "gopherd.h"
+#include "version.h"
+
+#ifdef HAVE_MMAP
 #include <sys/mman.h>
 #endif
 
-#ifdef USE_SENDFILE
+#ifdef HAVE_LINUX_SENDFILE
 #include <sys/sendfile.h>
 #endif
-
-#include "gopherd.h"
-#include "version.h"
 
 
 int verbose = 0;
@@ -284,7 +284,7 @@ void start_selecting(int csock)
 }
 #endif
 
-#if !defined(USE_SENDFILE) && !defined(USE_MMAP)
+#if !defined(HAVE_LINUX_SENDFILE) && !defined(HAVE_MMAP)
 #define PROT_READ	0
 #define MAP_SHARED	0
 
@@ -340,7 +340,7 @@ void close_request(struct connection *conn)
 {
 	if(verbose) printf("Close request\n");
 
-#ifdef USE_SENDFILE
+#ifdef HAVE_LINUX_SENDFILE
 	if(conn->fd) {
 		close(conn->fd);
 		conn->fd = 0;
@@ -528,7 +528,7 @@ int read_request(struct connection *conn)
 		}
 	}
 
-#ifdef USE_SENDFILE
+#ifdef HAVE_LINUX_SENDFILE
 	conn->fd = fd;
 
 	conn->len = lseek(fd, -1, SEEK_END) + 1;
@@ -575,7 +575,7 @@ int write_request(struct connection *conn)
 		return http_send_response(conn);
 #endif
 
-#ifdef USE_SENDFILE
+#ifdef HAVE_LINUX_SENDFILE
 	n = sendfile(SOCKET(conn), conn->fd, &conn->offset, conn->len - conn->offset);
 #else
 	n = write(SOCKET(conn),
@@ -595,7 +595,7 @@ int write_request(struct connection *conn)
 		if(*conn->cmd != '9') {
 			int neednl;
 
-#ifdef USE_SENDFILE
+#ifdef HAVE_LINUX_SENDFILE
 			neednl = conn->neednl;
 #else
 			neednl = conn->buf[conn->len - 1] != '\n';

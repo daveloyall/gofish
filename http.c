@@ -31,6 +31,7 @@
 #include "gopherd.h"
 #include "version.h"
 
+#ifdef USE_HTTP
 
 // Does not always return errors
 // Does not proxy external links
@@ -410,3 +411,5 @@ int http_init()
 
 	return 0;
 }
+
+#endif /* USE_HTTP */

@@ -1,7 +1,7 @@
 /*
  * gopherd.h - defines for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.2 $ $Date: 2002/08/24 05:04:31 $
+ * $Revision: 1.3 $ $Date: 2002/08/25 01:48:32 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -20,6 +20,8 @@
  */
 #ifndef _GOFISH_H_
 #define _GOFISH_H_
+
+#include "config.h"
 
 #ifdef HAVE_POLL
 #include <poll.h>
@@ -60,7 +62,7 @@ struct connection {
 #endif
 	unsigned addr;
 	char *cmd;
-#ifdef USE_SENDFILE
+#ifdef HAVE_LINUX_SENDFILE
 	int fd;
 	int neednl;
 #else
