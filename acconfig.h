@@ -4,8 +4,6 @@
 /* Version of package.  */
 #undef VERSION
 
-/* http gateway support */
-#define USE_HTTP 1
+/* For mmap_cache */
+#undef MMAP_CACHE
 
-/* virtual hosts */
-#undef VIRTUAL_HOSTS

@@ -1,7 +1,7 @@
-# Rules for GoFish gopher server
+# Rules for GoFish gopher/web server
 
-sbin_PROGRAMS = gopherd
-gopherd_SOURCES = gopherd.c log.c socket.c config.c http.c mmap_cache.c mime.c
+sbin_PROGRAMS = gofish
+gofish_SOURCES = gofish.c log.c socket.c config.c http.c mmap_cache.c mime.c
 
 EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \
 	init-gofish gofish.spec
@@ -11,6 +11,10 @@ man_MANS = gofish.1 gofish.5 dotcache.5 gopherd.1 mkcache.1 gmap2cache.1
 rootdir=$(localstatedir)/lib/gopherd
 icondir=$(rootdir)/icons
 
+# Keep the old name around.
+install-exec-hook:
+	ln -s $(sbindir)/gofish $(DESTDIR)$(sbindir)/gopherd
+
 # Do not override the gofish.conf or icons directories if they exist
 install-data-local: install-root-dir
 	$(mkinstalldirs) $(DESTDIR)$(sysconfdir)
@@ -18,6 +22,11 @@ install-data-local: install-root-dir
 	  $(INSTALL_DATA) gofish.conf $(DESTDIR)$(sysconfdir)/gofish.conf.new; \
 	else \
 	  $(INSTALL_DATA) gofish.conf $(DESTDIR)$(sysconfdir)/gofish.conf; \
+	fi
+	if test -f $(DESTDIR)$(sysconfdir)/gofish-www.conf; then \
+	  $(INSTALL_DATA) gofish-www.conf $(DESTDIR)$(sysconfdir)/gofish-www.conf.new; \
+	else \
+	  $(INSTALL_DATA) gofish-www.conf $(DESTDIR)$(sysconfdir)/gofish-www.conf; \
 	fi
 
 # 1. Only install Configure_GoFish if /var/lib/gopherd does not exist.
@@ -44,10 +53,12 @@ install-root-dir:
 uninstall-local:
 	rm -f  $(DESTDIR)$(sysconfdir)/gofish.conf
 	rm -f  $(DESTDIR)$(sysconfdir)/gofish.conf.new
+	rm -f  $(DESTDIR)$(sysconfdir)/gofish-www.conf
+	rm -f  $(DESTDIR)$(sysconfdir)/gofish-www.conf.new
 
 # Create version.h from gofish.spec
 # Don't use BUILT_SOURCES
-gopherd.o http.o: version.h
+gofish.o http.o: version.h
 
 version.h: gofish.spec
 	@version=`fgrep Version: gofish.spec | cut -d' ' -f2`; \
@@ -57,6 +68,6 @@ version.h: gofish.spec
 # Extra helper programs
 
 bin_PROGRAMS = mkcache gmap2cache
-mkcache_SOURCES = mkcache.c config.c
+mkcache_SOURCES = mkcache.c config.c mime.c
 gmap2cache_SOURCES=gmap2cache.c config.c
 bin_SCRIPTS = check-files

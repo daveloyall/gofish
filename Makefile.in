@@ -1,6 +1,6 @@
-# Makefile.in generated automatically by automake 1.4-p5 from Makefile.am
+# Makefile.in generated automatically by automake 1.4 from Makefile.am
 
-# Copyright (C) 1994, 1995-8, 1999, 2001 Free Software Foundation, Inc.
+# Copyright (C) 1994, 1995-8, 1999 Free Software Foundation, Inc.
 # This Makefile.in is free software; the Free Software Foundation
 # gives unlimited permission to copy and/or distribute it,
 # with or without modifications, as long as this notice is preserved.
@@ -10,7 +10,7 @@
 # even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 # PARTICULAR PURPOSE.
 
-# Rules for GoFish gopher server
+# Rules for GoFish gopher/web server
 
 
 SHELL = @SHELL@
@@ -66,11 +66,10 @@ MAKEINFO = @MAKEINFO@
 PACKAGE = @PACKAGE@
 VERSION = @VERSION@
 
-sbin_PROGRAMS = gopherd
-gopherd_SOURCES = gopherd.c log.c socket.c config.c http.c mmap_cache.c mime.c
+sbin_PROGRAMS = gofish
+gofish_SOURCES = gofish.c log.c socket.c config.c http.c mmap_cache.c mime.c
 
-EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \
-	init-gofish gofish.spec
+EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog 	init-gofish gofish.spec
 
 
 man_MANS = gofish.1 gofish.5 dotcache.5 gopherd.1 mkcache.1 gmap2cache.1
@@ -81,7 +80,7 @@ icondir = $(rootdir)/icons
 # Extra helper programs
 
 bin_PROGRAMS = mkcache gmap2cache
-mkcache_SOURCES = mkcache.c config.c
+mkcache_SOURCES = mkcache.c config.c mime.c
 gmap2cache_SOURCES = gmap2cache.c config.c
 bin_SCRIPTS = check-files
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -95,7 +94,7 @@ DEFS = @DEFS@ -I. -I$(srcdir) -I.
 CPPFLAGS = @CPPFLAGS@
 LDFLAGS = @LDFLAGS@
 LIBS = @LIBS@
-mkcache_OBJECTS =  mkcache.o config.o
+mkcache_OBJECTS =  mkcache.o config.o mime.o
 mkcache_LDADD = $(LDADD)
 mkcache_DEPENDENCIES = 
 mkcache_LDFLAGS = 
@@ -103,11 +102,11 @@ gmap2cache_OBJECTS =  gmap2cache.o config.o
 gmap2cache_LDADD = $(LDADD)
 gmap2cache_DEPENDENCIES = 
 gmap2cache_LDFLAGS = 
-gopherd_OBJECTS =  gopherd.o log.o socket.o config.o http.o mmap_cache.o \
+gofish_OBJECTS =  gofish.o log.o socket.o config.o http.o mmap_cache.o \
 mime.o
-gopherd_LDADD = $(LDADD)
-gopherd_DEPENDENCIES = 
-gopherd_LDFLAGS = 
+gofish_LDADD = $(LDADD)
+gofish_DEPENDENCIES = 
+gofish_LDFLAGS = 
 SCRIPTS =  $(bin_SCRIPTS)
 
 CFLAGS = @CFLAGS@
@@ -129,11 +128,11 @@ DISTFILES = $(DIST_COMMON) $(SOURCES) $(HEADERS) $(TEXINFOS) $(EXTRA_DIST)
 
 TAR = gtar
 GZIP_ENV = --best
-DEP_FILES =  .deps/config.P .deps/gmap2cache.P .deps/gopherd.P \
+DEP_FILES =  .deps/config.P .deps/gmap2cache.P .deps/gofish.P \
 .deps/http.P .deps/log.P .deps/mime.P .deps/mkcache.P \
 .deps/mmap_cache.P .deps/socket.P
-SOURCES = $(mkcache_SOURCES) $(gmap2cache_SOURCES) $(gopherd_SOURCES)
-OBJECTS = $(mkcache_OBJECTS) $(gmap2cache_OBJECTS) $(gopherd_OBJECTS)
+SOURCES = $(mkcache_SOURCES) $(gmap2cache_SOURCES) $(gofish_SOURCES)
+OBJECTS = $(mkcache_OBJECTS) $(gmap2cache_OBJECTS) $(gofish_OBJECTS)
 
 all: all-redirect
 .SUFFIXES:
@@ -255,9 +254,9 @@ gmap2cache: $(gmap2cache_OBJECTS) $(gmap2cache_DEPENDENCIES)
 	@rm -f gmap2cache
 	$(LINK) $(gmap2cache_LDFLAGS) $(gmap2cache_OBJECTS) $(gmap2cache_LDADD) $(LIBS)
 
-gopherd: $(gopherd_OBJECTS) $(gopherd_DEPENDENCIES)
-	@rm -f gopherd
-	$(LINK) $(gopherd_LDFLAGS) $(gopherd_OBJECTS) $(gopherd_LDADD) $(LIBS)
+gofish: $(gofish_OBJECTS) $(gofish_DEPENDENCIES)
+	@rm -f gofish
+	$(LINK) $(gofish_LDFLAGS) $(gofish_OBJECTS) $(gofish_LDADD) $(LIBS)
 
 install-binSCRIPTS: $(bin_SCRIPTS)
 	@$(NORMAL_INSTALL)
@@ -425,7 +424,7 @@ distdir: $(DISTFILES)
 	@for file in $(DISTFILES); do \
 	  d=$(srcdir); \
 	  if test -d $$d/$$file; then \
-	    cp -pr $$d/$$file $(distdir)/$$file; \
+	    cp -pr $$/$$file $(distdir)/$$file; \
 	  else \
 	    test -f $(distdir)/$$file \
 	    || ln $$d/$$file $(distdir)/$$file 2> /dev/null \
@@ -477,6 +476,8 @@ all-recursive-am: config.h
 
 install-exec-am: install-binPROGRAMS install-sbinPROGRAMS \
 		install-binSCRIPTS
+	@$(NORMAL_INSTALL)
+	$(MAKE) $(AM_MAKEFLAGS) install-exec-hook
 install-exec: install-exec-am
 
 install-data-am: install-man install-data-local
@@ -554,6 +555,10 @@ installdirs mostlyclean-generic distclean-generic clean-generic \
 maintainer-clean-generic clean mostlyclean distclean maintainer-clean
 
 
+# Keep the old name around.
+install-exec-hook:
+	ln -s $(sbindir)/gofish $(DESTDIR)$(sbindir)/gopherd
+
 # Do not override the gofish.conf or icons directories if they exist
 install-data-local: install-root-dir
 	$(mkinstalldirs) $(DESTDIR)$(sysconfdir)
@@ -561,6 +566,11 @@ install-data-local: install-root-dir
 	  $(INSTALL_DATA) gofish.conf $(DESTDIR)$(sysconfdir)/gofish.conf.new; \
 	else \
 	  $(INSTALL_DATA) gofish.conf $(DESTDIR)$(sysconfdir)/gofish.conf; \
+	fi
+	if test -f $(DESTDIR)$(sysconfdir)/gofish-www.conf; then \
+	  $(INSTALL_DATA) gofish-www.conf $(DESTDIR)$(sysconfdir)/gofish-www.conf.new; \
+	else \
+	  $(INSTALL_DATA) gofish-www.conf $(DESTDIR)$(sysconfdir)/gofish-www.conf; \
 	fi
 
 # 1. Only install Configure_GoFish if /var/lib/gopherd does not exist.
@@ -587,10 +597,12 @@ install-root-dir:
 uninstall-local:
 	rm -f  $(DESTDIR)$(sysconfdir)/gofish.conf
 	rm -f  $(DESTDIR)$(sysconfdir)/gofish.conf.new
+	rm -f  $(DESTDIR)$(sysconfdir)/gofish-www.conf
+	rm -f  $(DESTDIR)$(sysconfdir)/gofish-www.conf.new
 
 # Create version.h from gofish.spec
 # Don't use BUILT_SOURCES
-gopherd.o http.o: version.h
+gofish.o http.o: version.h
 
 version.h: gofish.spec
 	@version=`fgrep Version: gofish.spec | cut -d' ' -f2`; \

@@ -28,12 +28,13 @@
 #include <ctype.h>
 #include <sys/stat.h>
 
-#include "gopherd.h"
+#include "gofish.h"
 
 
 int verbose = 0;
 int recurse = 0;
 
+int mmap_cache_size; // needed by config
 
 int process_dir(char *path, int level);
 int process_file(char *dir, int level);

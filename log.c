@@ -1,7 +1,7 @@
 /*
  * log.c - log file output for the gofish gopher daemon
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.13 $ $Date: 2002/10/21 00:31:45 $
+ * $Revision: 1.14 $ $Date: 2002/11/03 00:34:12 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -22,12 +22,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <syslog.h>
 #include <time.h>
-#include <netinet/in.h>
+#include <ctype.h>
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
-#include "gopherd.h"
+
+#include "gofish.h"
 
 
 static FILE *log_fp;
@@ -63,11 +65,11 @@ int log_open(char *logname)
 // Common log file format
 void log_hit(struct connection *conn, unsigned status)
 {
-	extern int ignore_local;
-	char date[40], *name;
+	char date[40];
 	time_t now;
 	struct tm *t;
 
+	if(!log_fp) return; // nowhere to write!
 
 	if(ignore_local &&
 	   ((conn->addr & 0xffff0000) == 0xc0a80000 ||
@@ -79,22 +81,75 @@ void log_hit(struct connection *conn, unsigned status)
 	strftime(date, sizeof(date), "%d/%b/%Y:%T %z", t);
 
 	if(conn->http) {
-		// http request
-		name = conn->cmd + 4;
-		while(*name == '/') ++name;
-		strcat(name, " HTTP");
-	} else
-		name = conn->cmd ? (*conn->cmd ? conn->cmd : "/") : "[Empty]";
+		char *referer, *agent, *p, *e;
 
+		if((p = strchr(conn->cmd, '\r')) ||
+		   (p = strchr(conn->cmd, '\n'))) // paranoia
+			*p = '\0';
+		else
+			p = conn->cmd;
 
-	// This is 400 chars max
-	log_inuse = 1;
-	if(log_fp) {
-		fprintf(log_fp, "%s - - [%s] \"GET %.300s\" %u %u\n",
-				ntoa(conn->addr), date, name, status, conn->len);
+		if(combined_log) {
+			e = p + 1;
+
+			if((referer = strstr(e, "Referer:"))) {
+				for(referer += 8; isspace((int)*referer); ++referer) ;
+				if((p = strchr(referer, '\r')) ||
+				   (p = strchr(referer, '\n')))
+					*p = '\0';
+				else {
+					syslog(LOG_DEBUG, "Bad referer '%s'", referer);
+					referer = "-";
+				}
+			} else {
+				syslog(LOG_DEBUG, "No referer");
+				referer = "-";
+			}
+
+			if((agent = strstr(e, "User-Agent:"))) {
+				for(agent += 12; isspace((int)*agent); ++agent) ;
+				if((p = strchr(agent, '\r')) ||
+				   (p = strchr(agent, '\n')))
+					*p = '\0';
+				else {
+					syslog(LOG_DEBUG, "Bad agent '%s'", agent);
+					agent = "-";
+				}
+			} else {
+				syslog(LOG_DEBUG, "No agent");
+				agent = "-";
+			}
+
+			// This is 500 chars max
+			log_inuse = 1;
+			fprintf(log_fp,
+					"%s - - [%s] \"%.200s\" %u %u \"%.100s\" \"%.100s\"\n",
+					ntoa(conn->addr), date, conn->cmd, status, conn->len,
+					referer, agent);
+			fflush(log_fp);
+			log_inuse = 0;
+		} else {
+			// This is 600 chars max
+			log_inuse = 1;
+			fprintf(log_fp, "%s - - [%s] \"%.200s\" %u %u\n",
+					ntoa(conn->addr), date, conn->cmd, status, conn->len);
+			fflush(log_fp);
+			log_inuse = 0;
+		}
+	} else {
+		char *name = conn->cmd ? (*conn->cmd ? conn->cmd : "/") : "[Empty]";
+
+		// This is 400 chars max
+		log_inuse = 1;
+		if(combined_log)
+			fprintf(log_fp, "%s - - [%s] \"GET %.300s\" %u %u - -\n",
+					ntoa(conn->addr), date, name, status, conn->len);
+		else
+			fprintf(log_fp, "%s - - [%s] \"GET %.300s\" %u %u\n",
+					ntoa(conn->addr), date, name, status, conn->len);
 		fflush(log_fp);
+		log_inuse = 0;
 	}
-	log_inuse = 0;
 
 	if(log_must_reopen)
 		log_reopen(SIGUSR1);

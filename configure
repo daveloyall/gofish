@@ -451,7 +451,7 @@ echo > confdefs.h
 
 # A filename unique to this package, relative to the directory that
 # configure is in, which we can look for to find out if srcdir is correct.
-ac_unique_file=gopherd.h
+ac_unique_file=gofish.h
 
 # Find the source files, if location was not specified.
 if test -z "$srcdir"; then
@@ -2140,29 +2140,17 @@ if test "$GCC" = "yes"; then
   CFLAGS="$CFLAGS -Wall"
 fi
 
-echo $ac_n "checking http support""... $ac_c" 1>&6
-echo "configure:2145: checking http support" >&5
-if test "$enable_http" = "no"; then
+echo $ac_n "checking mmap_cache""... $ac_c" 1>&6
+echo "configure:2145: checking mmap_cache" >&5
+if test "$enable_mmap_cache" = "yes"; then
   cat >> confdefs.h <<\EOF
-#define USE_HTTP 0
+#define MMAP_CACHE 1
 EOF
 
 else
-  enable_http=yes
+  enable_mmap_cache=no
 fi
-echo "$ac_t""$enable_http" 1>&6
-
-echo $ac_n "checking virtual hosts""... $ac_c" 1>&6
-echo "configure:2157: checking virtual hosts" >&5
-if test "$enable_virtual_hosts" = "yes"; then
-  cat >> confdefs.h <<\EOF
-#define VIRTUAL_HOSTS 1
-EOF
-
-else
-  enable_virtual_hosts=no
-fi
-echo "$ac_t""$enable_virtual_hosts" 1>&6
+echo "$ac_t""$enable_mmap_cache" 1>&6
 
 trap '' 1 2 15
 cat > confcache <<\EOF

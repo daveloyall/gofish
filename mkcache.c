@@ -28,12 +28,14 @@
 #include <ctype.h>
 #include <sys/stat.h>
 
-#include "gopherd.h"
+#include "gofish.h"
 
 
 int verbose = 0;
 int recurse = 0;
 int sorttype = 0;
+
+int mmap_cache_size; // needed by config
 
 /*
  * TODO
@@ -71,6 +73,8 @@ struct extension {
 	{ "zip",	'9', 1 },
 	{ "Z",		'9', 1 },
 	{ "pdf",	'9', 1 },
+	{ "ogg",	'9', 1 },
+	{ "mp3",	'9', 1 },
 };
 #define N_EXTS	(sizeof(exts) / sizeof(struct extension))
 
@@ -222,6 +226,7 @@ void add_entry(struct entry **entries, int n, char *name, int isdir)
 	}
 	else if((ext = strrchr(name, '.'))) {
 		int i;
+		char *mime;
 
 		++ext;
 		for(i = 0; i < N_EXTS; ++i)
@@ -230,9 +235,28 @@ void add_entry(struct entry **entries, int n, char *name, int isdir)
 				entry->ftype = exts[i].binary ? '9' : '0';
 				return;
 			}
+
+		// If there is an extension, default to binary
+		// Most formats are binary.
+		entry->type = entry->ftype = '9';
+
+		if((mime = mime_find(ext))) {
+			// try to intuit the type from the mime...
+			if(strncmp(mime, "text/html", 9) == 0) {
+				entry->type  = 'h';
+				entry->ftype = '0';
+			}
+			else if(strncmp(mime, "text/", 5) == 0)
+				entry->type = entry->ftype = '0';
+			else if(strncmp(mime, "image/", 6) == 0) {
+				entry->type = 'I';
+				entry->ftype = '9';
+			}
+		}
 	}
-	// Default to text
-	entry->ftype = entry->type = '0';
+	else
+		// Default to text as per gopher spec
+		entry->ftype = entry->type = '0';
 }
 
 
@@ -335,6 +359,8 @@ int main(int argc, char *argv[])
 
 	read_config(config);
 
+	mime_init();
+
 	if(!realpath(root_dir, full)) {
 		perror(root_dir);
 		exit(1);
@@ -383,6 +409,3 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
-
-// We do not use mime
-void set_mime_file(char *fname) {}

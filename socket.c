@@ -1,7 +1,7 @@
 /*
  * socket.c - socket utilities for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.13 $ $Date: 2002/10/21 00:31:45 $
+ * $Revision: 1.14 $ $Date: 2002/11/03 00:34:12 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include "gopherd.h"
+
+#include "gofish.h"
 
 
 int listen_socket(int port)

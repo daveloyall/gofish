@@ -1,7 +1,7 @@
 /*
  * goproxy.c - a gopher proxy server for Opera
  * Copyright (C) 2002 Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.3 $ $Date: 2002/10/21 00:31:45 $
+ * $Revision: 1.4 $ $Date: 2002/11/03 00:34:12 $
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -284,7 +284,7 @@ void docmd(int sock, char *cmd)
 
 	// SAM this assumes no spaces in URLS
 	// SAM also assumes no quoting
-	for(e = p; *e && !isspace(*e); ++e) ;
+	for(e = p; *e && !isspace((int)*e); ++e) ;
 	*e = '\0';
 	unquote_url(p);
 

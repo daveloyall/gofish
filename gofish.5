@@ -30,6 +30,9 @@ the file to log GoFish hits in
 \fBpidfile\fR
 where to put the pidfile at runtime
 .TP
+\fBmimefile\fR
+the location of the Apache style mime.types file
+.TP
 \fBhost\fR
 host name
 .TP
@@ -39,8 +42,13 @@ what port number to listen on. 70 is the gopher port
 \fBuid, gid\fR
 the numeric user and group ids of the gopher user
 .TP
-\fBmime_file\fR
-the location of the Apache style mime.types file
+\fBvirtual_hosts\fR
+if set to 1, GoFish will support virtual hosts
+.TP
+\fBcombined_log\fR
+If set to 1, GoFish will use combined log format.
+Else, it defaults to common log format.
+Note that combined log format has no real meaning for gopher.
 .TP
 \fBno_local\fR
 if set to 1, GoFish will not log accesses from local

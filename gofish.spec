@@ -1,6 +1,6 @@
 Summary: A Gopher Server
 Name: gofish
-Version: 0.18
+Version: 0.20
 Release: 1
 Copyright: GPL
 Group: Networking/Daemons
@@ -9,7 +9,7 @@ BuildRoot: /var/tmp/%{name}-buildroot
 Conflicts: gopher, gopherd
 
 %description
-GoFish is a very simple gopher server. It is designed with security
+GoFish is a simple gopher / web server. It is designed with security
 and low resource usage in mind. GoFish uses a single process that
 handles all the connections. This provides low resource usage, good
 latency (no context switches), and good scalability.
@@ -52,8 +52,10 @@ rm -rf $RPM_BUILD_ROOT
 %defattr(-,root,root)
 %doc COPYING README INSTALL NEWS AUTHORS ChangeLog
 
+/usr/sbin/gofish
 /usr/sbin/gopherd
 /usr/bin/mkcache
+/usr/bin/gmap2cache
 /usr/bin/check-files
 /etc/rc.d/init.d/gopherd
 /usr/man/man1/*
@@ -68,29 +70,21 @@ rm -rf $RPM_BUILD_ROOT
 /var/lib/gopherd/Configure_GoFish
 
 %changelog
+* Sat Oct 26 2002 Sean MacLennan <seanm@seanm.ca>
+- Updated to 0.19
+- Added gmap2cache
+
 * Sun Sep 22 2002 Sean MacLennan <seanm@seanm.ca>
 - Updated to 0.11
 - Split into two rpms
-- Log fix
-- No longer using sendfile
 
 * Sat Aug 24 2002 Sean MacLennan <seanm@seanm.ca>
 - Updated to 0.9
 - Now using configure
 
-* Thu Aug 22 2002 Sean MacLennan <seanm@seanm.ca>
-- Updated to 0.8
-- Added alpha support for http gateway
-
 * Fri Aug 16 2002 Sean MacLennan <seanm@seanm.ca>
 - Updated to 0.7
 - Added man pages
-
-* Sat Aug 10 2002 Sean MacLennan <seanm@seanm.ca>
-- Updated to 0.4
-
-* Wed Aug  7 2002 Sean MacLennan <seanm@seanm.ca>
-- Updated to 0.2
 
 * Fri Aug  2 2002 Sean MacLennan <seanm@seanm.ca>
 - Created spec file

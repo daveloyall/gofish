@@ -1,3 +1,24 @@
+Changes for 0.20
+
+    GoFish
+
+	* changed the name to gofish
+	* bugfix http was not reading all the request
+	* bugfix http now correctly sends a 301 response for
+	         directory requests not ending in /
+	* valgrind cleanups
+	* gopherd to gofish link bad
+
+Changes for 0.19
+
+    GoFish
+
+	* bugfix if file was substring of another file with valid selector
+	* improved the mkcache type guessing heuristics
+	* added virtual hosts to config
+	* added combined log format
+	* added experimental support for mmap_cache
+
 Changes for 0.18
 
     GoFish

@@ -30,10 +30,8 @@
 #include <sys/utsname.h>
 #include <sys/stat.h>
 
-#include "gopherd.h"
+#include "gofish.h"
 #include "version.h"
-
-#ifdef USE_HTTP
 
 // Does not always return errors
 // Does not proxy external links
@@ -41,8 +39,9 @@
 // Better binary mime handling
 // Better image mime handling
 
-// Max server string 600
+#define MAX_SERVER_STRING	600
 static char *server_str;
+
 static char *mime_html = "text/html; charset=iso-8859-1";
 
 
@@ -57,6 +56,7 @@ static char *mime_html = "text/html; charset=iso-8859-1";
 extern int smart_open(char *name, char *type);
 
 static int isdir(char *name);
+
 
 inline int write_out(int fd, char *buf, int len)
 {
@@ -90,55 +90,84 @@ static void unquote(char *str)
 }
 
 
+static char *msg_400 =
+"Your browser sent a request that this server could not understand.";
+
 static char *msg_404 =
-"<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\r\n"
-"<title>404 Not Found</title>\r\n"
-"</head><body><h1>Not Found</h1>\r\n"
-"<p>The requested URL was not found on this server.\r\n"
-"</body></html>\r\n";
+"The requested URL was not found on this server.";
 
 static char *msg_500 =
-"<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\r\n"
-"<title>500 Server Error</title>\r\n"
-"</head><body><h1>Server Error</h1>\r\n"
-"<p>An internal server error occurred. Try again later.\r\n"
-"</body></html>\r\n";
+"An internal server error occurred. Try again later.";
 
 
-static int http_error(struct connection *conn, int status)
+/* This is a very specialized build_response just for errors.
+   The request field is for the 301 errors.
+*/
+static int http_error1(struct connection *conn, int status, char *request)
 {
-	char str[1024], *p, *msg;
-	int len;
+	char str[4096], *title, *p, *msg;
 
-	strcpy(str, "HTTP/1.0 ");
 	switch(status) {
+	case 301:
+		// Be nice and give the moved address.
+		title = "301 Moved Permanently";
+		sprintf(str,
+				"The document has moved <a href=\"/%s/\">here</a>.",
+				request);
+		if((msg = strdup(str)) == NULL) {
+			syslog(LOG_WARNING, "http_error: Out of memory.");
+			close_request(conn, status);
+			return 1;
+		}
+		break;
+	case 400:
+		title = "400 Bad Request";
+		msg = msg_400;
+		break;
 	case 404:
-		strcat(str, "404 Not Found\r\n");
+		title = "404 Not Found";
 		msg = msg_404;
 		break;
 	case 500:
-		strcat(str, "500 Server Error\r\n");
+		title = "500 Server Error";
 		msg = msg_500;
 		break;
 	default:
-		p = str + strlen(str);
-		sprintf(p, "%d Unknown\r\n", status);
+		syslog(LOG_ERR, "Unknow error status %d", status);
+		title = "500 Unknown";
 		msg = msg_500;
 		break;
 	}
 
-	strcat(str, server_str);
-	strcat(str, "Content-Type: text/html\r\n");
+	sprintf(str,
+			"HTTP/1.0 %s\r\n"
+			"Server: %s"
+			"Content-Type: text/html\r\n",
+			title, server_str);
 
-	len = strlen(msg);
-	p = str + strlen(str);
-	sprintf(p, "Content-Length: %d\r\n", len);
+	if(status == 301) {
+		// we must add the *real* location
+		p = str + strlen(str);
+		sprintf(p, "Location: /%s/\r\n", request);
+	}
 
 	strcat(str, "\r\n");
 
+	// Build the html body
+	p = str + strlen(str);
+	sprintf(p,
+			"<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\r\n"
+			"<title>%s</title>\r\n"
+			"</head><body><h1>%s</h1>\r\n"
+			"<p>%s\r\n"
+			"</body></html>\r\n",
+			title, title, msg);
+
+	if(status == 301) free(msg);
+
 	if((conn->http_header = strdup(str)) == NULL) {
-		// Just closing the connection is the best we can do
 		syslog(LOG_WARNING, "http_error: Out of memory.");
+		if(status == 302) free(msg);
 		close_request(conn, status);
 		return 1;
 	}
@@ -147,13 +176,18 @@ static int http_error(struct connection *conn, int status)
 
 	conn->iovs[0].iov_base = conn->http_header;
 	conn->iovs[0].iov_len  = strlen(conn->http_header);
-	conn->iovs[1].iov_base = msg;
-	conn->iovs[1].iov_len  = len;
-	conn->n_iovs = 2;
+	conn->n_iovs = 1;
 
 	set_writeable(conn);
 
 	return 0;
+}
+
+
+/* For all but 301 errors */
+static int http_error(struct connection *conn, int status)
+{
+	return http_error1(conn, status, "bogus");
 }
 
 
@@ -342,28 +376,35 @@ static int http_directory(struct connection *conn, int fd, char *dir)
 	return out;
 }
 
+struct mark {
+	char *pos;
+	char data;
+};
+
+#define MSAVE(m, p) (m)->pos = (p); (m)->data = *(p)
+#define MRESTORE(m) *(m)->pos = (m)->data
+
 
 int http_get(struct connection *conn)
 {
 	char *e;
 	int fd;
 	char *mime, type;
+	struct mark save;
 	char *request = conn->cmd;
 
 	conn->http = *request == 'H' ? HTTP_HEAD : HTTP_GET;
 
 	// This works for both GET and HEAD
 	request += 4;
-	while(isspace(*request)) ++request;
+	while(isspace((int)*request)) ++request;
 
-	if(!(e = strstr(request, "HTTP/"))) {
-		// Lynx does not add HTTP!
-		if((e = strchr(request, '\n')) == NULL)
-			e = request + strlen(request); // paranoia
-		if(*(e - 1) == '\r') --e;
-	}
+	if((e = strstr(request, "HTTP/")) == NULL)
+		// probably a local lynx request
+		return http_error(conn, 400);
 
 	while(*(e - 1) == ' ') --e;
+	MSAVE(&save, e);
 	*e++ = '\0';
 
 	if(*request == '/') ++request;
@@ -372,11 +413,13 @@ int http_get(struct connection *conn)
 
 	if((fd = smart_open(request, &type)) >= 0) {
 		// valid gopher request
-		if(verbose) printf("Gopher request '%s'\n", request);
+		if(verbose) printf("HTTP Gopher request '%s'\n", request);
 		switch(type) {
 		case '1':
-			if((fd = http_directory(conn, fd, request)) < 0)
+			if((fd = http_directory(conn, fd, request)) < 0) {
+				MRESTORE(&save);
 				return http_error(conn, 500);
+			}
 			mime = mime_html;
 			break;
 		case '0':
@@ -389,12 +432,12 @@ int http_get(struct connection *conn)
 		case '5':
 		case '6':
 		case '9':
-			if((mime = find_mime(request)) == NULL)
+			if((mime = mime_find(request)) == NULL)
 			   mime = "application/octet-stream";
 			break;
 		case 'g': mime = "image/gif"; break;
 		case 'h': mime = mime_html; break;
-		case 'I': mime = find_mime(request); break;
+		case 'I': mime = mime_find(request); break;
 		default:
 			// Safe default - let the user handle it
 			mime = "application/octet-stream";
@@ -403,47 +446,65 @@ int http_get(struct connection *conn)
 		}
 	} else {
 		// real http request
-#ifdef VIRTUAL_HOSTS
-		char *host;
 
-		if((host = strstr(e, "Host:"))) {
-			// isolate the host - ignore the port (if any)
-			for(host += 5; isspace(*host); ++host) ;
-			for(e = host; *e && !isspace(*e) && *e != ':'; ++e) ;
-			*e = '\0';
+		if(virtual_hosts) {
+			struct mark hsave;
+			char *host;
+			int rc;
+
+			if((host = strstr(e, "Host:"))) {
+				// isolate the host - ignore the port (if any)
+				for(host += 5; isspace((int)*host); ++host) ;
+				for(e = host; *e && !isspace((int)*e) && *e != ':'; ++e) ;
+				MSAVE(&hsave, e);
+				*e = '\0';
+			}
+
+			if(!host || !*host) {
+				syslog(LOG_WARNING, "Request with no host '%s'", request);
+				MRESTORE(&save);
+				if(host) MRESTORE(&hsave);
+				return http_error(conn, 404);
+			}
+
+			// root it
+			--host;
+			*host = '/';
+
+			// SAM Is this an expensive call?
+			rc = chdir(host);
+
+			MRESTORE(&hsave);
+
+			if(rc) {
+				syslog(LOG_WARNING, "host '%s': %m", host);
+				MRESTORE(&save);
+				return http_error(conn, 404);
+			}
+
+			if(verbose) printf("Http request %s '%s'\n", host + 1, request);
 		}
+		else if(verbose) printf("Http request '%s'\n", request);
 
-		if(!host || !*host) {
-			syslog(LOG_WARNING, "Request with no host '%s'", request);
-			return http_error(conn, 404);
-		}
-
-		// root it
-		--host;
-		*host = '/';
-
-		// SAM Is this an expensive call?
-		if(chdir(host)) {
-			syslog(LOG_WARNING, "No directory for host '%s'", host);
-			return http_error(conn, 404);
-		}
-		if(verbose) printf("Http request %s '%s'\n", host + 1, request);
-#else
-		if(verbose) printf("Http request '%s'\n", request);
-#endif
 		if(*request) {
 			if(isdir(request)) {
 				char dirname[MAX_LINE + 20], *p;
 
 				strcpy(dirname, request);
 				p = dirname + strlen(dirname);
-				if(*(p - 1) != '/') *p++ = '/';
+				if(*(p - 1) != '/') {
+					// We must send back a 301 response or relative
+					// URLs will not work
+					int rc = http_error1(conn, 301, request);
+					MRESTORE(&save); // restore *after* call
+					return rc;
+				}
 				strcpy(p, HTML_INDEX_FILE);
 				fd = open(dirname, O_RDONLY);
 				mime = HTML_INDEX_TYPE;
 			} else {
 				fd = open(request, O_RDONLY);
-				mime = find_mime(request);
+				mime = mime_find(request);
 			}
 		} else {
 			fd = open(HTML_INDEX_FILE, O_RDONLY);
@@ -453,8 +514,11 @@ int http_get(struct connection *conn)
 
 	if(fd < 0) {
 		syslog(LOG_WARNING, "%s: %m", request);
+		MRESTORE(&save);
 		return http_error(conn, 404);
 	}
+
+	MRESTORE(&save);
 
 	conn->len = lseek(fd, 0, SEEK_END);
 
@@ -525,24 +589,7 @@ static int isdir(char *name)
 	return S_ISDIR(sbuf.st_mode);
 }
 
-#else
 
-// Stub
-int http_get(struct connection *conn)
-{
-	char error[500];
-
-	strcpy(error, "HTTP/1.1 501 Not Implemented\r\n\r\n"
-		   "Sorry!\r\n\r\n"
-		   "This is a gopher server, not a web server.\r\n");
-	write(SOCKET(conn), error, strlen(error));
-
-	return -1;
-}
-
-#endif // USE_HTTP
-
-// These are always safe
 int http_init()
 {
 	char str[600];

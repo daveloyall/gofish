@@ -1,7 +1,7 @@
 /*
  * config.c - read the config file for the gofish gopher daemon
  * Copyright (C) 2000,2002  Sean MacLennan <seanm@seanm.ca>
- * $Revision: 1.13 $ $Date: 2002/10/21 00:31:45 $
+ * $Revision: 1.14 $ $Date: 2002/11/03 00:34:12 $
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,19 +31,22 @@
 #include <errno.h>
 #include <sys/time.h>
 
-#include "gopherd.h"
+#include "gofish.h"
 
 
-char *root_dir = GOPHER_ROOT;
-char *logfile = GOPHER_LOGFILE;
-char *pidfile = GOPHER_PIDFILE;
-char *hostname = GOPHER_HOST;
+char *root_dir = NULL;
+char *logfile  = NULL;
+char *pidfile  = NULL;
+char *hostname = NULL;
+
 int   port = GOPHER_PORT;
-uid_t uid = GOPHER_UID;
-gid_t gid = GOPHER_GID;
-int   ignore_local = IGNORE_LOCAL;
-int   icon_width = ICON_WIDTH;
-int   icon_height = ICON_HEIGHT;
+uid_t uid  = GOPHER_UID;
+gid_t gid  = GOPHER_GID;
+int   ignore_local  = IGNORE_LOCAL;
+int   icon_width    = ICON_WIDTH;
+int   icon_height   = ICON_HEIGHT;
+int   virtual_hosts = 0;
+int   combined_log  = 0;
 
 
 extern void set_mime_file(char *fname);
@@ -77,14 +80,12 @@ int read_config(char *fname)
 	char line[100], *s, *p;
 
 	// These values must be malloced
-	root_dir = must_strdup(GOPHER_ROOT);
-	if(hostname) hostname = must_strdup(hostname);
 
 	if((fp = fopen(fname, "r"))) {
 		while(fgets(line, sizeof(line), fp)) {
-			if(!isalpha(*line)) continue;
+			if(!isalpha((int)*line)) continue;
 
-			for(p = line + strlen(line); isspace(*(p - 1)); --p) ;
+			for(p = line + strlen(line); isspace((int)*(p - 1)); --p) ;
 			*p = '\0';
 
 			if((p = strchr(line, '=')) == NULL) {
@@ -103,13 +104,15 @@ int read_config(char *fname)
 			}
 
 			if(strcmp(line, "root") == 0) {
-				free(root_dir);
+				if(root_dir) free(root_dir);
 				root_dir = must_strdup(p);
-			} else if(strcmp(line, "logfile") == 0)
+			} else if(strcmp(line, "logfile") == 0) {
+				if(logfile) free(logfile);
 				logfile = must_strdup(p);
-			else if(strcmp(line, "pidfile") == 0)
+			} else if(strcmp(line, "pidfile") == 0) {
+				if(pidfile) free(pidfile);
 				pidfile = must_strdup(p);
-			else if(strcmp(line, "port") == 0)
+			} else if(strcmp(line, "port") == 0)
 				must_strtol(p, &port);
 			else if(strcmp(line, "uid") == 0)
 				must_strtol(p, (int*)&uid);
@@ -124,9 +127,18 @@ int read_config(char *fname)
 				must_strtol(p, &icon_width);
 			else if(strcmp(line, "icon_height") == 0)
 				must_strtol(p, &icon_height);
-			else if(strcmp(line, "mime_file") == 0)
+			else if(strcmp(line, "mimefile") == 0)
 				set_mime_file(p);
-			else
+			else if(strcmp(line, "virtual_hosts") == 0)
+				must_strtol(p, &virtual_hosts);
+			else if(strcmp(line, "combined_log") == 0)
+				must_strtol(p, &combined_log);
+			else if(strcmp(line, "mmap_cache_size") == 0) {
+#ifdef MMAP_CACHE
+				extern int mmap_cache_size;
+				must_strtol(p, &mmap_cache_size);
+#endif
+			} else
 				printf("Unknown config '%s'\n", line);
 		}
 
@@ -140,13 +152,22 @@ int read_config(char *fname)
 	// Make sure hostname is set to something
 	// Make sure it is malloced
 	if(hostname == NULL) {
+#ifdef GOPHER_HOST
+		hostname = must_strdup(GOPHER_HOST);
+#else
 		if(gethostname(line, sizeof(line) - 1)) {
 			puts("Warning: setting hostname to localhost.\n"
 				 "This is probably not what you want.");
 			strcpy(line, "localhost");
 		}
 		hostname = must_strdup(line);
+#endif
 	}
+
+	// Default'em
+	if(root_dir == NULL) root_dir = must_strdup(GOPHER_ROOT);
+	if(logfile == NULL)  logfile  = must_strdup(GOPHER_LOGFILE);
+	if(pidfile == NULL)  pidfile  = must_strdup(GOPHER_PIDFILE);
 
 	return 0;
 }
