@@ -1,5 +1,8 @@
 /* config.h.in.  Generated from configure.in by autoheader.  */
 
+/* Define this to enable CGI in the http server */
+#undef CGI
+
 /* The non-privileged user */
 #undef GOPHER_USER
 
@@ -15,6 +18,9 @@
 
 /* Define to 1 if you have the `gethostname' function. */
 #undef HAVE_GETHOSTNAME
+
+/* Define to 1 if you have the `initgroups' function. */
+#undef HAVE_INITGROUPS
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
@@ -141,9 +147,11 @@
 /* Define to `int' if <sys/types.h> doesn't define. */
 #undef gid_t
 
-/* Define as `__inline' if that's what the C compiler calls it, or to nothing
-   if it is not supported. */
+/* Define to `__inline__' or `__inline' if that's what the C compiler
+   calls it, or to nothing if 'inline' is not supported under any name.  */
+#ifndef __cplusplus
 #undef inline
+#endif
 
 /* Define to `long' if <sys/types.h> does not define. */
 #undef off_t

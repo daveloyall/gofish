@@ -36,6 +36,7 @@ char *root_dir = NULL;
 char *logfile  = NULL;
 char *pidfile  = NULL;
 char *hostname = NULL;
+char *tmpdir   = NULL;
 
 int   port = GOPHER_PORT;
 char *user = GOPHER_USER;
@@ -48,6 +49,8 @@ int   virtual_hosts = 0;
 int   combined_log  = 0;
 int   is_gopher     = 1;
 int   htmlizer      = 1;
+int   max_conns     = 25;
+int   process_cache = 0;
 
 
 extern void set_mime_file(char *fname);
@@ -75,12 +78,26 @@ void must_strtol(char *str, int *value)
 }
 
 
+char *must_alloc(int size)
+{
+	char *mem;
+
+	if((mem = calloc(size, 1)) == NULL) {
+		syslog(LOG_ERR, "Out of memory.");
+		exit(1);
+	}
+
+	return mem;
+}
+
+
 int read_config(char *fname)
 {
 	FILE *fp;
 	char line[100], *s, *p;
 
 	// These values must be malloced
+	user = must_strdup(user);
 
 	if((fp = fopen(fname, "r"))) {
 		while(fgets(line, sizeof(line), fp)) {
@@ -116,8 +133,13 @@ int read_config(char *fname)
 			} else if(strcmp(line, "pidfile") == 0) {
 				if(pidfile) free(pidfile);
 				pidfile = must_strdup(p);
+			} else if(strcmp(line, "tmpdir") == 0) {
+				if(tmpdir) free(tmpdir);
+				tmpdir = must_strdup(p);
 			} else if(strcmp(line, "port") == 0)
 				must_strtol(p, &port);
+			else if(strcmp(line, "listen-address") == 0)
+				set_listen_address(p);
 			else if(strcmp(line, "user") == 0) {
 				if(user) free(user);
 				user = must_strdup(p);
@@ -154,6 +176,14 @@ int read_config(char *fname)
 #endif
 			} else if(strcmp(line, "htmlize") == 0)
 				must_strtol(p, &htmlizer);
+			else if(strcmp(line, "max-connections") == 0)
+				must_strtol(p, &max_conns);
+			else if(strcmp(line, "html-header-file") == 0)
+				http_set_header(p, 1);
+			else if(strcmp(line, "html-trailer-file") == 0)
+				http_set_header(p, 0);
+			else if(strcmp(line, "preprocess-cache") == 0)
+				must_strtol(p, &process_cache);
 			else
 				printf("Unknown config '%s'\n", line);
 		}
@@ -184,6 +214,10 @@ int read_config(char *fname)
 	if(root_dir == NULL) root_dir = must_strdup(GOPHER_ROOT);
 	if(logfile == NULL)  logfile  = must_strdup(GOPHER_LOGFILE);
 	if(pidfile == NULL)  pidfile  = must_strdup(GOPHER_PIDFILE);
+	if(tmpdir == NULL) {
+		if(!(tmpdir = getenv("TMPDIR"))) tmpdir = "/tmp";
+		tmpdir = must_strdup(tmpdir);
+	}
 
 	if(strlen(root_dir) >= PATH_MAX) {
 		printf("Root directory too long\n");

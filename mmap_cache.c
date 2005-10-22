@@ -91,8 +91,8 @@ void mmap_init()
 {
 	int i;
 
-	if(mmap_cache_size < MAX_REQUESTS) {
-		syslog(LOG_ERR, "mmap_cache_size must be >= %d", MAX_REQUESTS);
+	if(mmap_cache_size < max_conns) {
+		syslog(LOG_ERR, "mmap_cache_size must be >= %d", max_conns);
 		exit(1);
 	}
 

@@ -192,12 +192,21 @@ int output_dir(struct entry *entries, int n, char *path, int level)
 	}
 
 	for(e = entries, i = 0; i < n; ++i, ++e)
-		if(level == 0)
-			fprintf(fp, "%c%s\t%c/%s\t%s\t%d\n",
-					e->type, e->name, e->ftype, e->name, hostname, port);
-		else
-			fprintf(fp, "%c%s\t%c/%s/%s\t%s\t%d\n",
-					e->type, e->name, e->ftype, path, e->name, hostname, port);
+		if(process_cache) {
+			if(level == 0)
+				fprintf(fp, "%c%s\t%c/%s\n",
+						e->type, e->name, e->ftype, e->name);
+			else
+				fprintf(fp, "%c%s\t%c/%s/%s\n",
+						e->type, e->name, e->ftype, path, e->name);
+		} else {
+			if(level == 0)
+				fprintf(fp, "%c%s\t%c/%s\t%s\t%d\n",
+						e->type, e->name, e->ftype, e->name, hostname, port);
+			else
+				fprintf(fp, "%c%s\t%c/%s/%s\t%s\t%d\n",
+						e->type, e->name, e->ftype, path, e->name, hostname, port);
+		}
 
 	fclose(fp);
 
@@ -345,9 +354,10 @@ int main(int argc, char *argv[])
 	int c;
 	int level;
 
-	while((c = getopt(argc, argv, "c:rs:v")) != -1)
+	while((c = getopt(argc, argv, "c:prs:v")) != -1)
 		switch(c) {
 		case 'c': config = strdup(optarg); break;
+		case 'p': process_cache = 1; break;
 		case 'r': recurse = 1; break;
 		case 's': sorttype = strtol(optarg, 0, 0); break;
 		case 'v': ++verbose; break;
@@ -408,3 +418,8 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
+
+
+/* Dummy functions for config */
+void set_listen_address(char *addr) {}
+void http_set_header(char *fname, int header) {}

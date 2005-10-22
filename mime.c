@@ -132,6 +132,8 @@ static struct mime default_mimes[] = {
 	{ "pdf",  "application/pdf" },
 	{ "html", "text/html" },
 	{ "htm",  "text/html" },
+	{ "txt",  "text/plain" },
+	{ "ico",  "text/plain" },
 	{ 0, 0 },
 };
 

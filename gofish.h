@@ -35,7 +35,6 @@
 
 #define MAX_HOSTNAME	65
 #define MAX_LINE		1280
-#define MAX_REQUESTS	25
 #define MIN_REQUESTS	4
 #define GOPHER_BACKLOG	100 // helps when backed up
 
@@ -134,6 +133,7 @@ extern void send_error(struct connection *conn, unsigned error);
 int listen_socket(int port);
 int accept_socket(int sock, unsigned *addr);
 char *ntoa(unsigned n); // helper
+void set_listen_address(char *addr);
 
 
 // exported from config.c
@@ -142,6 +142,7 @@ extern char *root_dir;
 extern char *logfile;
 extern char *pidfile;
 extern char *hostname;
+extern char *tmpdir;
 extern int   port;
 extern char *user;
 extern uid_t uid;
@@ -153,9 +154,14 @@ extern int   virtual_hosts;
 extern int   combined_log;
 extern int   is_gopher;
 extern int   htmlizer;
+extern int   max_conns;
+extern int   process_cache;
+
 
 int read_config(char *fname);
 char *must_strdup(char *str);
+char *must_alloc(int size);
+
 
 // exported from http.c
 int http_init(void);
@@ -163,6 +169,7 @@ void http_cleanup(void);
 int http_get(struct connection *conn);
 int http_send_response(struct connection *conn);
 int http_error(struct connection *conn, int status);
+void http_set_header(char *fname, int header);
 #ifdef CGI
 void reap_children(void);
 #endif
@@ -182,10 +189,6 @@ int READ(int handle, char *whereto, int len);
 int WRITE(int handle, char *whereto, int len);
 
 
-#if MAX_REQUESTS < 2
-#error You must have at least 2 requests!
-#endif
-
 #ifdef HAVE_POLL
 
 #define SOCKET(c)	((c)->ufd->fd)
@@ -194,7 +197,7 @@ int WRITE(int handle, char *whereto, int len);
 	do { \
 		(c)->ufd->fd = sock; \
 		(c)->ufd->events = POLLIN; \
-		if((c)->conn_n + 1 > npoll) npoll = (c)->conn_n + 1; \
+		if((c)->conn_n + 2 > npoll) npoll = (c)->conn_n + 2; \
 	} while(0)
 
 #define set_writeable(c) \

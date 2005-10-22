@@ -29,12 +29,17 @@ the file to log GoFish hits in
 .TP
 \fBpidfile\fR
 where to put the pidfile at runtime
+\fBtmpdir\fR
+directory to put temporary files in. Relative to root-dir.
 .TP
 \fBmimefile\fR
 the location of the Apache style mime.types file
 .TP
 \fBhost\fR
 host name
+.TP
+\fBlisten-address\fR
+address to listen on.
 .TP
 \fBport\fR
 what port number to listen on. 70 is the gopher port
@@ -56,6 +61,9 @@ Note that combined log format has no real meaning for gopher.
 \fBno_local\fR
 if set to 1, GoFish will not log accesses from local
 machines. Local machines are defined as 192.168.x.x and 127.0.0.1.
+\fBpreprocess_cache\fR
+if set to 1 will dynamically process the .cache file to add host
+and port if necessary.
 .SH EXAMPLE
 .nf
 # GoFish Gopher Server configuration file

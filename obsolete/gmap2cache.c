@@ -266,3 +266,7 @@ int read_dir(char *path, int level)
 
 // We do not use mime
 void set_mime_file(char *fname) {}
+
+// Dummy functions for config
+void set_listen_address(char *addr) {}
+void http_set_header(char *fname, int header) {}

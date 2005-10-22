@@ -28,7 +28,6 @@
 #include <ctype.h>
 #include <sys/utsname.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 
 #include "gofish.h"
 #include "version.h"
@@ -45,7 +44,7 @@ static char *server_str;
 static char *mime_html = "text/html; charset=iso-8859-1";
 
 
-#define HTML_HEADER \
+static char *html_header=
 			"<!DOCTYPE HTML PUBLIC " \
 			"\"-//W3C//DTD HTML 4.01 Transitional//EN\">\n" \
 			"<html lang=\"en\">\n" \
@@ -53,16 +52,16 @@ static char *mime_html = "text/html; charset=iso-8859-1";
 			"<style type=\"text/css\">\n" \
 			"<!--\nBODY { margin: 1em 15%; }\n-->\n</style>\n" \
 			"</head>\n" \
-			"<body>\n<p><pre>\n"
+	"<body>\n<p><pre>\n";
+static int html_set_header = 0;
 
-#define HTML_TRAILER "</pre>\n<hr>\n<p><small>" \
+static char *html_trailer = "</pre>\n<hr>\n<p><small>" \
 				  	 "<a href=\"http://gofish.sourceforge.net/\">" \
 			         "GoFish " GOFISH_VERSION \
 			  	     "</a> gopher to http gateway.</small>\n" \
-                     "</body>\n</html>\n"
-#define TEXT_TRAILER "\n\n" \
-"------------------------------------------------------------------------\n" \
-					 "GoFish " GOFISH_VERSION " gopher to http gateway\n"
+	"</body>\n</html>\n";
+static int html_set_trailer = 0;
+
 #define HTML_INDEX_FILE	"index.html"
 #define HTML_INDEX_TYPE	mime_html
 
@@ -73,6 +72,9 @@ static int isdir(char *name);
 
 static int go_chdir(const char *path);
 
+#ifdef CGI
+static int cgi(struct connection *conn, char *request);
+#endif
 
 inline int write_out(int fd, char *buf, int len)
 {
@@ -227,6 +229,8 @@ static int http_build_response(struct connection *conn, char *type)
 
 	strcpy(str, "HTTP/1.1 200 OK\r\n");
 	strcat(str, server_str);
+	// SAM We do not support persistant connections
+	strcat(str, "Connection: close\r\n");
 	p = str;
 	if(type) {
 		p += strlen(p);
@@ -240,6 +244,7 @@ static int http_build_response(struct connection *conn, char *type)
 
 	if((conn->http_header = strdup(str)) == NULL) {
 		// Just closing the connection is the best we can do
+		syslog(LOG_WARNING, "Low on memory.");
 		close_connection(conn, 500);
 		return 1;
 	}
@@ -446,7 +451,7 @@ int http_get(struct connection *conn)
 		if((fd = smart_open(request, &type)) >= 0) {
 			// valid gopher request
 			if(verbose) printf("HTTP Gopher request '%s'\n", request);
-			switch(type) {
+ 			switch(type) {
 			case '1':
 				new = http_directory(conn, fd, request);
 				close(fd);
@@ -459,13 +464,11 @@ int http_get(struct connection *conn)
 				break;
 			case '0':
 				if(htmlizer) {
-					conn->html_header  = HTML_HEADER;
-					conn->html_trailer = HTML_TRAILER;
+					conn->html_header  = html_header;
+					conn->html_trailer = html_trailer;
 					mime = mime_html;
-				} else {
-					conn->html_trailer = TEXT_TRAILER;
+				} else
 					mime = "text/plain";
-				}
 				break;
 			case '4':
 			case '5':
@@ -494,11 +497,13 @@ int http_get(struct connection *conn)
 		char *p;
 
 		if((p = strstr(request, "cgi-bin/"))) {
-			extern int cgi(struct connection *conn, char *request); // SAM
 			int rc;
 
-			if(go_chdir("/cgi-bin"))
+			if((rc = go_chdir("/cgi-bin"))) {
 				printf("Chdir to cgi-bin failed!\n");
+				MRESTORE(&save);
+				return http_error(conn, 404);
+			}
 			rc = cgi(conn, p + 8);
 			MRESTORE(&save);
 			return rc;
@@ -668,6 +673,38 @@ void http_cleanup()
 }
 
 
+void http_set_header(char *fname, int header)
+{
+	int fd;
+	char *msg;
+	int n;
+	struct stat sbuf;
+
+	if((fd = open(fname, O_RDONLY)) < 0 || fstat(fd, &sbuf)) {
+		syslog(LOG_ERR, "Unable to open %s", fname);
+		exit(1);
+	}
+
+	msg = must_alloc(sbuf.st_size + 1);
+	if((n = read(fd, msg, sbuf.st_size)) != sbuf.st_size) {
+		syslog(LOG_ERR, "Unable to read %s: %d/%ld", fname, n, sbuf.st_size);
+		exit(1);
+	}
+
+	close(fd);
+
+	if(header) {
+		if(html_set_header) free(html_header);
+		html_header = msg;
+		html_set_header = 1;
+	} else {
+		if(html_set_trailer) free(html_trailer);
+		html_trailer = msg;
+		html_set_trailer = 1;
+	}
+}
+
+
 /* added by folkert@vanheusden.com */
 /* This function takes away all the hassle when working
  * with read(). Blocking reads only.
@@ -774,7 +811,7 @@ int cgi(struct connection *conn, char *request)
 
 	// Request has already been preprocessed
 	// We are pointing past cgi-bin/
-	printf("CGI Request '%s'\n", request); // SAM
+	if(verbose) printf("CGI Request '%s'\n", request); // SAM
 
 	if((path = strchr(request, '/'))) {
 		*path++ = '\0';
@@ -782,8 +819,6 @@ int cgi(struct connection *conn, char *request)
 		if(*p == '/') *p = '\0';
 	} else
 		path = "";
-
-	printf("Script '%s' Path '%s'\n", request, path); // SAM DBG
 
 	if(*request == '\0') {
 		printf("NO REQUEST\n");
@@ -793,24 +828,30 @@ int cgi(struct connection *conn, char *request)
 
 	if((child = fork()) == 0) {
 		// child
-		char *envp[10];
-		char env[1024];
+		char *envp[10]; // SAM
+		char env[1024], *p;
 		int sock = SOCKET(conn);
-		char *server_str = "GoFish\r\n"; // SAM FIX LATER
-		int n, len;
+		int i, n, len;
 
 		// SAM set socket non-blocking?
 
 		dup2(sock, 1);
 		dup2(sock, 2);
 
+		i = 0;
 		strcpy(env, "PATH=/usr/bin:/bin:.");
-		envp[0] = strdup(env);
-		sprintf(env, "SCRIPT_NAME=%s", request);
-		envp[1] = strdup(env);
+		envp[i++] = strdup(env);
+		// viewcvs needs to see the /cgi-bin
+		sprintf(env, "SCRIPT_NAME=/cgi-bin/%s", request); // SAM added cgi-bin
+		envp[i++] = strdup(env);
+		if((p = strchr(path, '?'))) {
+			*p++ = '\0';
+			sprintf(env, "QUERY_STRING=%s", p);
+			envp[i++] = strdup(env);
+		}
 		sprintf(env, "PATH_INFO=/%s", path);
-		envp[2] = strdup(env);
-		envp[3] = NULL;
+		envp[i++] = strdup(env);
+		envp[i] = NULL;
 
 		// Since we are in a seperate process, safe
 		// to just write out blocking
@@ -865,30 +906,5 @@ int cgi(struct connection *conn, char *request)
 	conn->cgi = child;
 
 	return 0;
-}
-
-
-void reap_children()
-{
-	extern struct connection conns[];
-	struct connection *conn;
-	int i;
-
-	for(conn = conns, i = 0; i < MAX_REQUESTS; ++i, ++conn)
-		if(conn->cgi) {
-			int rc, status;
-
-			if((rc = waitpid(conn->cgi, &status, WNOHANG)) == conn->cgi) {
-				// done
-				// SAM SAM SAM FIX check status
-				printf("CGI done\n"); // SAM
-				close_connection(conn, 200);
-			} else if(rc == 0) {
-				printf("waitpid had nothing for us....\n"); // SAM
-			} else {
-				perror("waitpid");
-				close_connection(conn, 500);
-			}
-		}
 }
 #endif /* CGI */

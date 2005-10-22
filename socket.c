@@ -27,10 +27,20 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 
 #include "gofish.h"
+
+/* We cannot define this anywhere else */
+static in_addr_t listen_addr = INADDR_ANY;
+
+
+void set_listen_address(char *addr)
+{
+	listen_addr = inet_addr(addr);
+}
 
 
 int listen_socket(int port)
@@ -39,7 +49,7 @@ int listen_socket(int port)
 	int s, optval;
 
  	sock_name.sin_family = AF_INET;
-	sock_name.sin_addr.s_addr = htonl(INADDR_ANY);
+	sock_name.sin_addr.s_addr = listen_addr; /* already network addr */
 	sock_name.sin_port = htons(port);
 	optval = 1;
 
@@ -69,16 +79,21 @@ int accept_socket(int sock, unsigned *addr)
 	int addrlen = sizeof(sock_name);
 	int new, flags;
 
-	if((new = accept (sock, (struct sockaddr *)&sock_name, &addrlen)) >= 0) {
-		if(addr)
-			*addr = htonl(sock_name.sin_addr.s_addr);
-		flags = fcntl(new, F_GETFL, 0);
-		if(flags == -1 || fcntl(new, F_SETFL, flags | O_NONBLOCK) == -1) {
-			printf("fcntl failed\n");
-			close(new);
-			new = -1;
-		}
+	if((new = accept(sock, (struct sockaddr *)&sock_name, &addrlen)) < 0)
+		return -1;
+
+	if(addr) *addr = htonl(sock_name.sin_addr.s_addr);
+
+	flags = fcntl(new, F_GETFL, 0);
+	if(flags == -1 || fcntl(new, F_SETFL, flags | O_NONBLOCK) == -1) {
+		printf("fcntl failed\n");
+		close(new);
+		return -1;
 	}
+
+	flags = 1;
+	if(setsockopt(new, IPPROTO_TCP, TCP_NODELAY, &flags, sizeof(flags)))
+		perror("setsockopt(TCP_NODELAY)"); // not fatal
 
 	return new;
 }

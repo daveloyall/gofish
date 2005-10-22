@@ -44,6 +44,9 @@ AC_FUNC_STRFTIME
 AC_CHECK_FUNCS(gethostname select socket strdup strerror strstr strtol uname)
 AC_CHECK_FUNCS(writev daemon)
 
+dnl Interix does not have initgroups
+AC_CHECK_FUNCS(initgroups)
+
 dnl poll does not work on the arm
 dnl if this goes, AC_CANONICAL_HOST and the files
 dnl config.sub and config.guess can go
@@ -58,6 +61,9 @@ if test "$GCC" = "yes"; then
 fi
 
 AC_MSG_CHECKING([mmap_cache])
+AC_ARG_ENABLE(mmap-cache,
+  [  --enable-mmap-cache    Enable mmap caching. EXPERIMENTAL],
+  [])
 if test "$enable_mmap_cache" = "yes"; then
   AC_DEFINE(MMAP_CACHE, 1, [Define this to enable mmap cache])
 else
@@ -65,11 +71,22 @@ else
 fi
 AC_MSG_RESULT([$enable_mmap_cache])
 
+AC_MSG_CHECKING([CGI])
+AC_ARG_ENABLE(cgi,
+  [  --enable-cgi    Enable CGI in http server. EXPERIMENTAL],
+  [])
+if test "$enable_cgi" = "yes"; then
+  AC_DEFINE(CGI, 1, [Define this to enable CGI in the http server])
+else
+  enable_cgi=no
+fi
+AC_MSG_RESULT([$enable_cgi])
+
 dnl Check for gopher user override.
 AC_MSG_CHECKING([gopheruser])
 gopheruser="gopher"
 AC_ARG_WITH(gopheruser,
-	[  --with-gopheruser=USER   Use USER as non-privileged user],
+	[  --with-gopheruser=USER  Use USER as non-privileged user],
 	[gopheruser=$withval])
 AC_DEFINE_UNQUOTED(GOPHER_USER, "$gopheruser", [The non-privileged user])
 AC_MSG_RESULT([$gopheruser])

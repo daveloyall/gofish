@@ -14,7 +14,7 @@ webtest_SOURCES=webtest.c socket.c
 EXTRA_DIST = COPYING README INSTALL NEWS AUTHORS ChangeLog \
 	init-gofish gofish.spec
 
-man_MANS = gofish.1 gofish.5 dotcache.5 gopherd.1 mkcache.1 gmap2cache.1
+man_MANS = gofish.1 gofish.5 dotcache.5 gopherd.1 mkcache.1
 
 # Keep the old name around.
 install-exec-hook:
@@ -74,7 +74,6 @@ version.h: gofish.spec
 
 # Extra helper programs
 
-bin_PROGRAMS = mkcache gmap2cache
+bin_PROGRAMS = mkcache
 mkcache_SOURCES = mkcache.c config.c mime.c
-gmap2cache_SOURCES=gmap2cache.c config.c
 bin_SCRIPTS = check-files

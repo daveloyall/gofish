@@ -1,19 +1,18 @@
 #!/bin/sh
 
-TMP=$HOME/work/gofish
+SDIR=`dirname $0`
+
+TMP=${TMP:-/tmp}
+PKG=$TMP/package-gofish
 
 VERSION=`fgrep Version: gofish.spec | cut -d' ' -f2`
-RELEASE=1
+BUILD=1sam
+ARCH=i486
 
-ARCH=`uname -m`
-case $ARCH in i*86) ARCH=i386;; esac
+rm -rf $PKG
+mkdir -p $PKG || { echo "mkdir $PKG failed"; exit 1; }
 
-PKG=gofish-$VERSION-$ARCH-$RELEASE.tgz
-
-echo "Creating $PKG"
-
-rm -rf $TMP
-mkdir -p $TMP || { echo "mkdir $TMP failed"; exit 1; }
+make clean
 
 ./configure \
 	--prefix=/usr \
@@ -23,20 +22,27 @@ mkdir -p $TMP || { echo "mkdir $TMP failed"; exit 1; }
 
 make || { echo "Make failed"; exit 1; }
 
-make install DESTDIR=$TMP || { echo "Install failed"; exit 1; }
+make DESTDIR=$PKG install-strip || { echo "Install failed"; exit 1; }
 
-gzip $TMP/usr/man/man1/*
-gzip $TMP/usr/man/man5/*
+chgrp bin $PKG/usr/sbin $PKG/usr/sbin/gofish
+chgrp bin $PKG/usr/bin $PKG/usr/bin/*
 
-mkdir $TMP/install
-install slackware/doinst.sh $TMP/install
-install -m 644 slackware/slack-desc $TMP/install
+gzip $PKG/usr/man/man1/*
+gzip $PKG/usr/man/man5/*
 
-cd $TMP
+install -d $PKG/usr/doc/gofish-$VERSION
+install -m 644 COPYING ChangeLog Configure_GoFish README* TODO \
+    $PKG/usr/doc/gofish-$VERSION
+
+mkdir $PKG/install
+install $SDIR/doinst.sh $PKG/install
+install -m 644 $SDIR/slack-desc $PKG/install
+
+cd $PKG
 
 # Change some file names
-mv etc/gofish.conf etc/gofish.conf.default
-mv etc/gofish-www.conf etc/gofish-www.conf.default
-mv var/gopher var/gopher.new
+mv etc/gofish.conf etc/gofish.conf.new
+mv etc/gofish-www.conf etc/gofish-www.conf.new
+mv var/gopher var/gopher.sample
 
-makepkg -l y -c y $PKG
+makepkg -l y -c n $TMP/gofish-$VERSION-$ARCH-$BUILD.tgz
